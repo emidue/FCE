@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VetFactura C — Facturación Electrónica</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Mulish:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-paw">🐾</span>
+      <span class="brand-name">VetFactura</span>
+      <span class="brand-tag">Factura C</span>
+    </div>
+    <nav class="topbar-nav">
+      <button class="nav-btn active" data-section="nueva">Nueva Factura</button>
+      <button class="nav-btn" data-section="historial">Historial</button>
+      <button class="nav-btn" data-section="clientes">Clientes</button>
+      <button class="nav-btn" data-section="config">Configuración</button>
+    </nav>
+    <div class="topbar-status">
+      <span class="dot dot--ok"></span>
+      <span class="status-text">ARCA · Homologación</span>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ════════════════════════════════
+         SECCIÓN: NUEVA FACTURA
+    ════════════════════════════════ -->
+    <section class="page active" id="page-nueva">
+
+      <div class="page-hero">
+        <h1>Nueva <em>Factura C</em></h1>
+        <p>Completá los datos y emití en segundos via ARCA.</p>
+      </div>
+
+      <form id="facturaForm" class="card-stack" novalidate>
+
+        <!-- Encabezado del comprobante -->
+        <div class="card">
+          <div class="card-label">Encabezado</div>
+          <div class="enc-row">
+            <div class="field enc-pv">
+              <label>P. Venta</label>
+              <input type="number" id="puntoVenta" value="1" min="1" max="9999" class="input" />
+            </div>
+            <div class="field enc-fecha">
+              <label>Fecha</label>
+              <input type="date" id="fechaCbte" class="input" />
+            </div>
+            <div class="field enc-concepto">
+              <label>Concepto</label>
+              <div class="sel-wrap">
+                <select id="concepto" class="input">
+                  <option value="2" selected>Servicios</option>
+                  <option value="1">Productos</option>
+                  <option value="3">Productos y Servicios</option>
+                </select>
+              </div>
+            </div>
+            <button type="button" class="enc-toggle" id="btnToggleFechas" title="Fechas de servicio">
+              <span class="enc-toggle-icon">▸</span> Fechas
+            </button>
+          </div>
+          <div class="enc-fechas" id="rowFechasServ">
+            <div class="field">
+              <label>Servicio desde</label>
+              <input type="date" id="fchServDesde" class="input input--sm" />
+            </div>
+            <div class="field">
+              <label>Servicio hasta</label>
+              <input type="date" id="fchServHasta" class="input input--sm" />
+            </div>
+            <div class="field">
+              <label>Vto. de pago</label>
+              <input type="date" id="fchVtoPago" class="input input--sm" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Datos del cliente -->
+        <div class="card">
+          <div class="card-label">Cliente</div>
+          <div class="cli-row">
+            <div class="field cli-nombre">
+              <label>Nombre / Razón Social</label>
+              <input type="text" id="receptorNombre" class="input" placeholder="Ej: Juan Pérez" />
+            </div>
+            <div class="field cli-tipodoc">
+              <label>Tipo Doc.</label>
+              <div class="sel-wrap">
+                <select id="tipoDoc" class="input">
+                  <option value="96">DNI</option>
+                  <option value="86">CUIL</option>
+                  <option value="80">CUIT</option>
+                  <option value="99">Sin identificar</option>
+                </select>
+              </div>
+            </div>
+            <div class="field cli-nrodoc">
+              <label>Nº Documento</label>
+              <input type="text" id="nroDoc" class="input" placeholder="33456789" />
+            </div>
+            <div class="field cli-condiva">
+              <label>Cond. IVA</label>
+              <div class="sel-wrap">
+                <select id="condIva" class="input">
+                  <option value="5" selected>Consumidor Final</option>
+                  <option value="1">Resp. Inscripto</option>
+                  <option value="4">Exento</option>
+                  <option value="6">Monotributo</option>
+                  <option value="7">No Categorizado</option>
+                  <option value="8">Prov. Exterior</option>
+                  <option value="9">Cliente Exterior</option>
+                  <option value="10">Liberado Ley 19.640</option>
+                  <option value="13">Monotrib. Social</option>
+                  <option value="15">No Alcanzado</option>
+                  <option value="16">Monotrib. Promovido</option>
+                </select>
+              </div>
+            </div>
+            <button type="button" class="enc-toggle" id="btnToggleContacto" title="Email y domicilio">
+              <span class="enc-toggle-icon">▸</span> Contacto
+            </button>
+          </div>
+          <div class="enc-fechas" id="rowContacto">
+            <div class="field field--grow">
+              <label>Email <span class="opt">opcional · para envío automático</span></label>
+              <input type="email" id="receptorEmail" class="input input--sm" placeholder="cliente@email.com" />
+            </div>
+            <div class="field field--grow">
+              <label>Domicilio <span class="opt">opcional</span></label>
+              <input type="text" id="receptorDom" class="input input--sm" placeholder="Av. Rivadavia 1234" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Ítems -->
+        <div class="card">
+          <div class="card-label-row">
+            <div class="card-label">Servicios / Productos</div>
+            <button type="button" class="btn-ghost" id="btnAddItem">+ Agregar ítem</button>
+          </div>
+
+          <div class="items-grid-head">
+            <span>Descripción</span>
+            <span>Cant.</span>
+            <span>Precio Unit. (c/IVA)</span>
+            <span>Subtotal</span>
+            <span></span>
+          </div>
+          <div id="itemsContainer"></div>
+
+          <div class="items-note">
+            💡 Factura C: los precios incluyen IVA. El monto total es el que figura en el comprobante.
+          </div>
+        </div>
+
+        <!-- Totales + acciones -->
+        <div class="bottom-row">
+          <div class="totales-box">
+            <div class="total-row">
+              <span>Subtotal</span>
+              <span id="totalBruto">$ 0,00</span>
+            </div>
+            <div class="total-row total-row--final">
+              <span>TOTAL FACTURA C</span>
+              <strong id="totalFinal">$ 0,00</strong>
+            </div>
+          </div>
+
+          <div class="actions-col">
+            <div class="field">
+              <label>Observaciones <span class="opt">opcional</span></label>
+              <textarea id="observaciones" class="input" rows="2" placeholder="Ej: Consulta + vacuna antirrábica para Max..."></textarea>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn--outline" id="btnPreview">👁 Vista previa</button>
+              <button type="button" class="btn btn--primary" id="btnEmitir">⚡ Emitir Factura C</button>
+            </div>
+          </div>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- ════════════════════════════════
+         SECCIÓN: HISTORIAL
+    ════════════════════════════════ -->
+    <section class="page" id="page-historial">
+      <div class="page-hero">
+        <h1>Historial de <em>Comprobantes</em></h1>
+        <p>Todas las Facturas C emitidas.</p>
+      </div>
+
+      <div class="card">
+        <div class="filter-row">
+          <input type="text" class="input" placeholder="🔍  Buscar cliente, número, CAE..." id="filtroHist" style="max-width:340px" />
+          <div class="totales-mini" id="resumenHist">
+            <span>Total emitido hoy: <strong id="totalHoy">$ 0,00</strong></span>
+          </div>
+        </div>
+
+        <table class="tabla" id="tablaHistorial">
+          <thead>
+            <tr>
+              <th>N° Comprobante</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>CAE</th>
+              <th>Vto. CAE</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="historialBody">
+            <tr class="empty-row"><td colspan="7">No hay comprobantes emitidos aún.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════
+         SECCIÓN: CLIENTES
+    ════════════════════════════════ -->
+    <section class="page" id="page-clientes">
+      <div class="page-hero">
+        <h1>Clientes <em>Frecuentes</em></h1>
+        <p>Seleccioná un cliente para pre-cargar sus datos.</p>
+      </div>
+      <div class="card">
+        <div class="filter-row">
+          <input type="text" class="input" placeholder="🔍  Buscar..." id="filtroClientes" style="max-width:300px" />
+          <button class="btn btn--primary" id="btnNuevoCliente">+ Nuevo cliente</button>
+        </div>
+        <table class="tabla">
+          <thead>
+            <tr><th>Nombre</th><th>Tipo Doc.</th><th>Documento</th><th>Cond. IVA</th><th>Email</th><th>Facturas</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="clientesBody">
+            <tr class="empty-row"><td colspan="7">No hay clientes guardados.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════
+         SECCIÓN: CONFIGURACIÓN
+    ════════════════════════════════ -->
+    <section class="page" id="page-config">
+      <div class="page-hero">
+        <h1>Configuración <em>del Sistema</em></h1>
+        <p>Datos del emisor y certificados ARCA.</p>
+      </div>
+
+      <div class="config-grid">
+
+        <div class="card">
+          <div class="card-label">Datos del Emisor</div>
+          <div class="field"><label>Razón Social</label><input class="input" type="text" id="cfgRazon" /></div>
+          <div class="field" style="margin-top:.65rem"><label>CUIT</label><input class="input" type="text" id="cfgCuit" readonly /></div>
+          <div class="field" style="margin-top:.65rem"><label>Domicilio Fiscal</label><input class="input" type="text" id="cfgDom" /></div>
+          <div class="field" style="margin-top:.65rem">
+            <label>Condición IVA</label>
+            <div class="sel-wrap"><select class="input" id="cfgCondIva">
+              <option>Monotributista</option>
+              <option>Responsable Inscripto</option>
+              <option>Exento</option>
+            </select></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Logo de la factura</div>
+          <div style="display:flex;align-items:center;gap:1rem;margin:.5rem 0 1rem">
+            <img id="cfgLogoPreview" src="" alt="Sin logo" style="max-width:120px;max-height:80px;background:#f4f4f4;border:1px dashed #ccc;border-radius:6px;padding:4px;display:none" />
+            <span id="cfgLogoEmpty" style="color:#888;font-size:.85rem">Sin logo cargado</span>
+          </div>
+          <input type="file" id="cfgLogoFile" accept="image/png,image/jpeg,image/jpg" style="font-size:.85rem" />
+          <div class="btn-col" style="margin-top:.8rem">
+            <button class="btn btn--outline" type="button" onclick="subirLogo()">📎 Subir logo</button>
+            <button class="btn btn--outline" type="button" onclick="borrarLogo()">🗑 Quitar logo</button>
+          </div>
+          <p style="font-size:.75rem;color:#888;margin-top:.6rem">PNG o JPG, máximo 2 MB. Aparece arriba a la izquierda del PDF.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-label">SMTP · Envío por email</div>
+          <div class="field"><label>Servidor SMTP</label><input class="input" type="text" id="cfgSmtpHost" placeholder="smtp.gmail.com" /></div>
+          <div class="row-2" style="margin-top:.65rem">
+            <div class="field"><label>Puerto</label><input class="input" type="number" id="cfgSmtpPort" value="587" /></div>
+            <div class="field">
+              <label>TLS</label>
+              <div class="sel-wrap"><select class="input" id="cfgSmtpTls">
+                <option value="true">STARTTLS (587)</option>
+                <option value="false">SSL directo (465) / ninguno</option>
+              </select></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:.65rem"><label>Usuario</label><input class="input" type="text" id="cfgSmtpUser" placeholder="usuario@dominio.com" /></div>
+          <div class="field" style="margin-top:.65rem"><label>Contraseña</label><input class="input" type="password" id="cfgSmtpPass" placeholder="Dejar vacío para conservar" /></div>
+          <div class="field" style="margin-top:.65rem"><label>From (email)</label><input class="input" type="email" id="cfgSmtpFromEmail" placeholder="facturas@dominio.com" /></div>
+          <div class="field" style="margin-top:.65rem"><label>From (nombre)</label><input class="input" type="text" id="cfgSmtpFromName" placeholder="VetFactura" /></div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Certificados ARCA</div>
+          <div class="cert-list">
+            <div class="cert-item">
+              <span>Certificado X.509</span>
+              <span class="pill pill--ok">✓ Cargado</span>
+            </div>
+            <div class="cert-item">
+              <span>Clave privada .pem</span>
+              <span class="pill pill--ok">✓ Cargada</span>
+            </div>
+            <div class="cert-item">
+              <span>Ambiente</span>
+              <div class="sel-wrap" style="width:180px">
+                <select class="input" id="cfgAmbiente">
+                  <option value="homologacion">Homologación (test)</option>
+                  <option value="produccion">Producción</option>
+                </select>
+              </div>
+            </div>
+            <div class="cert-item">
+              <span>Token WSAA vigente hasta</span>
+              <span class="pill pill--ok" id="tokenVto">—</span>
+            </div>
+            <div class="cert-item">
+              <span>Punto de Venta</span>
+              <span class="pill pill--ok">0001 · Web Services</span>
+            </div>
+          </div>
+          <div class="btn-col" style="margin-top:1rem">
+            <button class="btn btn--outline" onclick="renovarToken()">🔄 Renovar Token WSAA</button>
+            <button class="btn btn--outline">📎 Reemplazar certificado</button>
+          </div>
+        </div>
+
+      </div>
+      <button class="btn btn--primary" style="margin-top:1.25rem" onclick="guardarConfig()">Guardar configuración</button>
+    </section>
+
+  </div><!-- /layout -->
+
+
+  <!-- ══ MODAL: Emitiendo ══ -->
+  <div class="overlay" id="ovEmitiendo">
+    <div class="modal">
+      <div class="spinner"></div>
+      <h3>Emitiendo Factura C…</h3>
+      <p class="modal-sub">Comunicando con ARCA vía WS</p>
+      <div class="steps" id="steps">
+        <div class="step" id="s1">① Autenticando con WSAA</div>
+        <div class="step" id="s2">② Consultando último nº (FECompConsultarUltimoAutorizado)</div>
+        <div class="step" id="s3">③ Solicitando CAE (FECAESolicitar)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Éxito ══ -->
+  <div class="overlay" id="ovExito">
+    <div class="modal modal--ok">
+      <div class="ok-icon">✓</div>
+      <h3>¡Factura C emitida!</h3>
+      <div class="result-box" id="resultBox"></div>
+      <div class="modal-btns">
+        <button class="btn btn--outline" id="btnPDF">⬇ Descargar PDF</button>
+        <button class="btn btn--primary" id="btnNueva">✦ Nueva Factura</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Preview ══ -->
+  <div class="overlay" id="ovPreview">
+    <div class="modal modal--preview">
+      <div class="preview-header">
+        <div class="preview-emisor">
+          <div class="preview-logo">🐾 <span id="pvEmisor">Veterinaria San Martín</span></div>
+          <div class="preview-cuit" id="pvCuit">CUIT: 20-30456789-1</div>
+        </div>
+        <div class="preview-tipo">
+          <div class="preview-letra">C</div>
+          <div class="preview-word">FACTURA</div>
+          <div class="preview-pv" id="pvNro">0001-00000001</div>
+        </div>
+      </div>
+      <div class="preview-datos">
+        <div class="pdat"><span>Cliente</span><strong id="pvCliente">—</strong></div>
+        <div class="pdat"><span>Documento</span><strong id="pvDoc">—</strong></div>
+        <div class="pdat"><span>Fecha</span><strong id="pvFecha">—</strong></div>
+      </div>
+      <table class="tabla" id="pvTable" style="margin:1rem 0"></table>
+      <div class="preview-total">
+        <span>TOTAL FACTURA C</span>
+        <strong id="pvTotal">$ 0,00</strong>
+      </div>
+      <div class="modal-btns">
+        <button class="btn btn--outline" id="btnClosePreview">Cerrar</button>
+        <button class="btn btn--primary" id="btnEmitirPreview">⚡ Confirmar y Emitir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Nuevo / Editar Cliente ══ -->
+  <div class="overlay" id="ovCliente">
+    <div class="modal">
+      <h3 id="ncTitle" style="margin-bottom:1.25rem">Nuevo Cliente</h3>
+      <input type="hidden" id="ncId" value="" />
+      <div class="field"><label>Nombre</label><input class="input" id="ncNombre" placeholder="Juan Pérez" /></div>
+      <div class="row-2" style="margin-top:.65rem">
+        <div class="field">
+          <label>Tipo Doc.</label>
+          <div class="sel-wrap"><select class="input" id="ncTipoDoc">
+            <option value="96">DNI</option><option value="86">CUIL</option><option value="80">CUIT</option><option value="99">Sin identificar</option>
+          </select></div>
+        </div>
+        <div class="field"><label>Número</label><input class="input" id="ncNroDoc" placeholder="33456789" /></div>
+      </div>
+      <div class="field" style="margin-top:.65rem">
+        <label>Condición frente al IVA</label>
+        <div class="sel-wrap"><select class="input" id="ncCondIva">
+          <option value="5" selected>Consumidor Final</option>
+          <option value="1">IVA Responsable Inscripto</option>
+          <option value="4">IVA Sujeto Exento</option>
+          <option value="6">Responsable Monotributo</option>
+          <option value="7">Sujeto No Categorizado</option>
+          <option value="8">Proveedor del Exterior</option>
+          <option value="9">Cliente del Exterior</option>
+          <option value="10">IVA Liberado – Ley 19.640</option>
+          <option value="13">Monotributista Social</option>
+          <option value="15">IVA No Alcanzado</option>
+          <option value="16">Monotributo Trab. Indep. Promovido</option>
+        </select></div>
+      </div>
+      <div class="field" style="margin-top:.65rem"><label>Email</label><input class="input" type="email" id="ncEmail" placeholder="opcional" /></div>
+      <div class="modal-btns" style="margin-top:1.5rem">
+        <button class="btn btn--outline" id="btnCancelCliente">Cancelar</button>
+        <button class="btn btn--primary" id="btnGuardarCliente">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

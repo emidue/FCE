@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Entorno y secretos
+.env
+vetfactura-c/backend/certs/
+
+# Base de datos
+*.db
+*.db-shm
+*.db-wal
+
+# Datos locales
+vetfactura-c/backend/data/
+
+# Logs
+*.log
+log.txt
+
+# IDE
+.vscode/
+.idea/
