@@ -611,6 +611,15 @@ async function cargarConfig() {
     const cuitEl = document.getElementById('cfgCuit');
     if (cuitEl) cuitEl.value = cfg.cuit || '';
     document.getElementById('cfgDom').value          = e.domicilio || '';
+    const domCom = document.getElementById('cfgDomCom');
+    if (domCom) domCom.value = e.domicilio_comercial || '';
+    const iibb = document.getElementById('cfgIIBB');
+    if (iibb) iibb.value = e.ingresos_brutos || '';
+    const iniAct = document.getElementById('cfgInicioAct');
+    if (iniAct) {
+      const v = e.inicio_actividades || '';
+      iniAct.value = /^\d{8}$/.test(v) ? `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6)}` : v;
+    }
     const condSel = document.getElementById('cfgCondIva');
     if (condSel && e.condicion_iva) condSel.value = e.condicion_iva;
     document.getElementById('cfgSmtpHost').value     = s.host || '';
@@ -639,9 +648,13 @@ async function cargarConfig() {
 async function guardarConfig() {
   const payload = {
     emisor: {
-      razon_social:  document.getElementById('cfgRazon').value.trim(),
-      domicilio:     document.getElementById('cfgDom').value.trim(),
-      condicion_iva: document.getElementById('cfgCondIva').value,
+      razon_social:        document.getElementById('cfgRazon').value.trim(),
+      domicilio:           document.getElementById('cfgDom').value.trim(),
+      domicilio_comercial: (document.getElementById('cfgDomCom')?.value || '').trim(),
+      condicion_iva:       document.getElementById('cfgCondIva').value,
+      cuit:                (document.getElementById('cfgCuit')?.value || '').trim(),
+      ingresos_brutos:     (document.getElementById('cfgIIBB')?.value || '').trim(),
+      inicio_actividades:  (document.getElementById('cfgInicioAct')?.value || '').replace(/-/g,''),
     },
     smtp: {
       host:       document.getElementById('cfgSmtpHost').value.trim(),
