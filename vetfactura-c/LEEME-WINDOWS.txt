@@ -1,0 +1,76 @@
+══════════════════════════════════════════════════════════════
+  VetFactura C — Instrucciones para Windows 11
+══════════════════════════════════════════════════════════════
+
+REQUISITO PREVIO
+────────────────
+  Tener Python 3.10 o superior instalado.
+  Descarga: https://www.python.org/downloads/
+  IMPORTANTE: al instalar, marcá la casilla "Add Python to PATH".
+
+PRIMERA VEZ (INSTALACIÓN)
+─────────────────────────
+  1. Descomprimí el ZIP en una carpeta, por ejemplo:
+       C:\VetFactura\
+  2. Entrá a la carpeta y hacé DOBLE CLIC en:
+       install.bat
+     Windows va a pedir permisos de administrador (UAC) — aceptalos.
+     Esto:
+       - Crea el entorno virtual de Python en backend\venv
+       - Instala todas las dependencias (FastAPI, uvicorn, reportlab, etc.)
+       - Copia .env.example a .env si no existe
+       - Agrega "factura.com" al archivo hosts apuntando a 127.0.0.1
+       - Configura redirección del puerto 80 al 3000 (netsh portproxy)
+
+USO DIARIO
+──────────
+  Hacé DOBLE CLIC en:
+       start.bat
+  Se abren en segundo plano el backend (puerto 8000) y el
+  frontend (puerto 3000), y se abre el navegador en:
+       http://factura.com
+  (o http://localhost:3000 si la instalación del alias falló)
+
+  Para DETENER todo, volvé a la ventana de start.bat y
+  apretá cualquier tecla.
+
+QUITAR EL ALIAS factura.com (opcional)
+──────────────────────────────────────
+  Si alguna vez querés revertir el alias y la redirección de puerto:
+  Doble clic en "uninstall-dns.bat" (pedirá permisos de admin).
+
+IMPORTANTE SOBRE factura.com
+────────────────────────────
+  "factura.com" es un dominio real. Al agregarlo al hosts de esta
+  PC, *desde esta PC* ya no podrás entrar al sitio real factura.com
+  (si es que existe). Solo afecta a esta máquina.
+
+ESTRUCTURA DEL PROYECTO
+───────────────────────
+  backend\
+    main.py               ← servidor FastAPI
+    requirements.txt      ← dependencias
+    .env                  ← configuración (CUIT, ambiente, rutas)
+    vetfactura.db         ← base de datos SQLite (se preserva)
+    certs\                ← certificados AFIP / ARCA
+      cert.pem, key.pem           (produccion)
+      homo_cert.pem, homo_key.pem (homologacion)
+    data\
+      config.json         ← datos del emisor, SMTP, etc.
+      logo.png            ← logo para el PDF
+  frontend\
+    index.html            ← UI
+    app.js
+    styles.css
+
+AMBIENTE (Homologación / Producción)
+────────────────────────────────────
+  El ambiente se elige desde la pantalla "Configuración" de la
+  app, o editando backend\.env (variable ARCA_AMBIENTE).
+
+PROBLEMAS COMUNES
+─────────────────
+  - "Python no encontrado": reinstalalo marcando "Add Python to PATH".
+  - Puerto 8000 o 3000 ocupado: cerrá cualquier otra app que los use.
+  - SMTP: si usás Gmail, necesitás un App Password de 16 caracteres
+    (no la contraseña de la cuenta).

@@ -15,53 +15,47 @@ echo   VetFactura C — Iniciando...
 echo ══════════════════════════════════════════
 echo.
 
-:: Verificar Python
-where python >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Python no encontrado. Instalalo desde https://www.python.org
-    echo         Asegurate de marcar "Add Python to PATH"
+:: Verificar que install.bat se haya ejecutado
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+    echo [ERROR] El entorno virtual no existe.
+    echo         Ejecuta primero "install.bat" haciendo doble clic.
+    echo.
     pause
     exit /b 1
 )
 
-:: Crear venv si no existe
-if not exist "%VENV_DIR%\Scripts\activate.bat" (
-    echo [*] Creando entorno virtual...
-    python -m venv "%VENV_DIR%"
-)
-
-:: Activar venv e instalar dependencias
-echo [*] Instalando dependencias...
-call "%VENV_DIR%\Scripts\activate.bat"
-pip install -q -r "%BACKEND_DIR%\requirements.txt"
-
-:: Copiar .env si no existe
+:: Copiar .env si falta
 if not exist "%BACKEND_DIR%\.env" (
-    echo [*] Creando .env desde .env.example...
-    copy "%BACKEND_DIR%\.env.example" "%BACKEND_DIR%\.env" >nul
-    echo [!] Edita %BACKEND_DIR%\.env con tus datos reales.
+    if exist "%BACKEND_DIR%\.env.example" (
+        copy "%BACKEND_DIR%\.env.example" "%BACKEND_DIR%\.env" >nul
+    )
 )
 
 :: Iniciar backend
-echo [*] Iniciando backend en puerto %BACKEND_PORT%...
-start "VetFactura - Backend" /min cmd /c "cd /d "%BACKEND_DIR%" && "%VENV_DIR%\Scripts\python.exe" -m uvicorn main:app --reload --host 0.0.0.0 --port %BACKEND_PORT%"
+echo [*] Iniciando backend  (puerto %BACKEND_PORT%)...
+start "VetFactura - Backend" /min cmd /c "cd /d "%BACKEND_DIR%" && "%VENV_DIR%\Scripts\python.exe" -m uvicorn main:app --host 0.0.0.0 --port %BACKEND_PORT%"
 
 :: Iniciar frontend
-echo [*] Iniciando frontend en puerto %FRONTEND_PORT%...
-start "VetFactura - Frontend" /min cmd /c "cd /d "%FRONTEND_DIR%" && python -m http.server %FRONTEND_PORT% --bind 0.0.0.0"
+echo [*] Iniciando frontend (puerto %FRONTEND_PORT%)...
+start "VetFactura - Frontend" /min cmd /c "cd /d "%FRONTEND_DIR%" && "%VENV_DIR%\Scripts\python.exe" -m http.server %FRONTEND_PORT% --bind 0.0.0.0"
 
 :: Esperar que el backend levante
 timeout /t 3 /nobreak >nul
 
+:: Decidir URL (factura.com si el hosts tiene el alias, sino localhost:3000)
+set FRONT_URL=http://localhost:%FRONTEND_PORT%
+findstr /C:"factura.com" "%SystemRoot%\System32\drivers\etc\hosts" >nul 2>&1
+if %errorlevel% equ 0 set FRONT_URL=http://factura.com
+
 :: Abrir navegador
-start http://localhost:%FRONTEND_PORT%
+start %FRONT_URL%
 
 echo.
 echo ══════════════════════════════════════════
 echo   VetFactura C levantado correctamente
 echo ══════════════════════════════════════════
+echo   Frontend (Web):  %FRONT_URL%
 echo   Backend  (API):  http://localhost:%BACKEND_PORT%
-echo   Frontend (Web):  http://localhost:%FRONTEND_PORT%
 echo   API docs:        http://localhost:%BACKEND_PORT%/docs
 echo ══════════════════════════════════════════
 echo.
