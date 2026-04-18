@@ -588,6 +588,13 @@ def obtener_factura(id: int):
         items = db.execute("SELECT * FROM factura_items WHERE factura_id=?", (id,)).fetchall()
     return {**dict(row), "items": [dict(i) for i in items]}
 
+TIPO_DOC_RECEPTOR = {
+    80: "CUIT",
+    86: "CUIL",
+    96: "DNI",
+    99: "Consumidor Final",
+}
+
 COND_IVA_RECEPTOR = {
     1:  "IVA Responsable Inscripto",
     4:  "IVA Sujeto Exento",
@@ -648,231 +655,294 @@ def _draw_page(c, w, h, copia: str, f: dict, items, cfg: dict):
 
     emisor = cfg.get("emisor", {})
     razon  = emisor.get("razon_social") or "Emisor"
-    dom    = emisor.get("domicilio") or ""
-    dom_c  = emisor.get("domicilio_comercial") or dom
+    dom_c  = emisor.get("domicilio_comercial") or emisor.get("domicilio") or ""
     cond_e = emisor.get("condicion_iva") or "Responsable Monotributo"
     cuit_e = emisor.get("cuit") or CUIT
     iibb   = emisor.get("ingresos_brutos") or ""
     ini_act = _fmt_date(emisor.get("inicio_actividades") or "")
 
-    margin_l, margin_r = 1.2*cm, 1.2*cm
-    x0, x1 = margin_l, w - margin_r
+    PRIMARY = (0.055, 0.463, 0.431)
+    TEXT    = (0.118, 0.161, 0.224)
+    MUTED   = (0.392, 0.455, 0.545)
+    SOFT_BG = (0.949, 0.965, 0.980)
+    BORDER  = (0.851, 0.878, 0.914)
+    WHITE   = (1, 1, 1)
+
+    def sf(rgb): c.setFillColorRGB(*rgb)
+    def ss(rgb): c.setStrokeColorRGB(*rgb)
+
+    margin = 1.4*cm
+    x0, x1 = margin, w - margin
     y_top  = h - 1.2*cm
 
-    # Banda superior "ORIGINAL / DUPLICADO / TRIPLICADO"
-    c.setStrokeColorRGB(0,0,0); c.setLineWidth(0.8)
-    band_h = 0.75*cm
-    c.rect(x0, y_top - band_h, x1 - x0, band_h, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString((x0 + x1)/2, y_top - band_h + 0.22*cm, copia)
+    # Copia: pill arriba a la derecha
+    pill_w, pill_h = 3.4*cm, 0.6*cm
+    pill_x = x1 - pill_w
+    pill_y = y_top - pill_h
+    sf(PRIMARY); ss(PRIMARY)
+    c.roundRect(pill_x, pill_y, pill_w, pill_h, 0.3*cm, stroke=0, fill=1)
+    sf(WHITE); c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(pill_x + pill_w/2, pill_y + 0.2*cm, copia)
 
-    # Cabecera (3 columnas): izquierda / centro (C) / derecha
-    head_top    = y_top - band_h
-    head_h      = 3.3*cm
-    center_w    = 2.6*cm
-    center_x    = (x0 + x1)/2 - center_w/2
-    left_x, left_w   = x0, center_x - x0
-    right_x, right_w = center_x + center_w, x1 - (center_x + center_w)
+    # Encabezado: C central + columnas laterales sin marco
+    head_top = pill_y - 0.35*cm
+    c_box_w, c_box_h = 2.2*cm, 2.4*cm
+    c_box_x = (x0 + x1)/2 - c_box_w/2
+    c_box_y = head_top - c_box_h
+    sf(WHITE); ss(TEXT); c.setLineWidth(1.2)
+    c.rect(c_box_x, c_box_y, c_box_w, c_box_h, stroke=1, fill=1)
+    sf(TEXT); c.setFont("Helvetica-Bold", 52)
+    c.drawCentredString(c_box_x + c_box_w/2, c_box_y + 0.6*cm, "C")
+    sf(MUTED); c.setFont("Helvetica-Bold", 7)
+    c.drawCentredString(c_box_x + c_box_w/2, c_box_y + 0.2*cm, "COD. 011")
 
-    # Caja izquierda
-    c.rect(left_x, head_top - head_h, left_w, head_h, stroke=1, fill=0)
-    # Título razón social grande
-    c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(left_x + left_w/2, head_top - 0.65*cm, razon.upper())
-    # Logo (opcional, pequeño a la izquierda)
+    # Izquierda: logo + razón social + campos emisor
+    left_x = x0
+    logo_offset = 0
     if LOGO_PATH.exists():
         try:
             img = ImageReader(str(LOGO_PATH))
             iw, ih = img.getSize()
-            max_w, max_h = 1.8*cm, 1.6*cm
+            max_w, max_h = 1.6*cm, 1.6*cm
             scale = min(max_w/iw, max_h/ih)
-            c.drawImage(img, left_x + 0.2*cm, head_top - 2.2*cm,
+            c.drawImage(img, left_x, head_top - 1.7*cm,
                         width=iw*scale, height=ih*scale,
                         preserveAspectRatio=True, mask='auto')
+            logo_offset = iw*scale + 0.25*cm
         except Exception:
-            pass
-    ly = head_top - 1.15*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(left_x + 0.2*cm, ly, "Razón Social: ")
-    c.setFont("Helvetica", 8);      c.drawString(left_x + 2.3*cm, ly, razon)
-    ly -= 0.5*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(left_x + 0.2*cm, ly, "Domicilio Comercial: ")
-    c.setFont("Helvetica", 8);      c.drawString(left_x + 3.2*cm, ly, dom_c[:70])
-    ly -= 0.5*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(left_x + 0.2*cm, ly, "Condición frente al IVA: ")
-    c.setFont("Helvetica", 8);      c.drawString(left_x + 3.7*cm, ly, cond_e)
+            logo_offset = 0
 
-    # Caja centro (letra C)
-    c.rect(center_x, head_top - head_h, center_w, head_h, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 48)
-    c.drawCentredString(center_x + center_w/2, head_top - 2.1*cm, "C")
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(center_x + center_w/2, head_top - 2.7*cm, "COD. 011")
+    sf(TEXT); c.setFont("Helvetica-Bold", 15)
+    c.drawString(left_x + logo_offset, head_top - 0.45*cm, razon.upper()[:40])
 
-    # Caja derecha
-    c.rect(right_x, head_top - head_h, right_w, head_h, stroke=1, fill=0)
-    ry = head_top - 0.55*cm
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(right_x + 0.2*cm, ry, "FACTURA")
-    ry -= 0.6*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 0.2*cm, ry, "Punto de Venta: ")
-    c.setFont("Helvetica-Bold", 9); c.drawString(right_x + 2.7*cm, ry, str(f["punto_venta"]).zfill(5))
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 4.3*cm, ry, "Comp. Nro: ")
-    c.setFont("Helvetica-Bold", 9); c.drawString(right_x + 6.1*cm, ry, str(f["nro_cbte"]).zfill(8))
-    ry -= 0.45*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 0.2*cm, ry, "Fecha de Emisión: ")
-    c.setFont("Helvetica", 8);      c.drawString(right_x + 3.0*cm, ry, _fmt_date(f.get("fecha_cbte")))
-    ry -= 0.45*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 0.2*cm, ry, "CUIT: ")
-    c.setFont("Helvetica", 8);      c.drawString(right_x + 1.3*cm, ry, str(cuit_e))
-    ry -= 0.45*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 0.2*cm, ry, "Ingresos Brutos: ")
-    c.setFont("Helvetica", 8);      c.drawString(right_x + 2.9*cm, ry, iibb)
-    ry -= 0.45*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(right_x + 0.2*cm, ry, "Fecha de Inicio de Actividades: ")
-    c.setFont("Helvetica", 8);      c.drawString(right_x + 4.9*cm, ry, ini_act)
+    ly = head_top - 0.95*cm
+    for lbl, val in (("RAZÓN SOCIAL", razon),
+                     ("DOMICILIO", dom_c[:60] or "—"),
+                     ("CONDICIÓN FRENTE AL IVA", cond_e)):
+        sf(MUTED); c.setFont("Helvetica", 6.2)
+        c.drawString(left_x + logo_offset, ly, lbl)
+        sf(TEXT); c.setFont("Helvetica", 8.5)
+        c.drawString(left_x + logo_offset, ly - 0.28*cm, str(val))
+        ly -= 0.48*cm
 
-    # Fila "Período Facturado"
-    per_top = head_top - head_h
-    per_h   = 0.75*cm
-    c.rect(x0, per_top - per_h, x1 - x0, per_h, stroke=1, fill=0)
-    py = per_top - per_h + 0.22*cm
+    # Derecha: FACTURA + nros + fecha
+    right_x = c_box_x + c_box_w + 0.5*cm
+    sf(PRIMARY); c.setFont("Helvetica-Bold", 20)
+    c.drawString(right_x, head_top - 0.55*cm, "FACTURA")
+
+    sf(MUTED); c.setFont("Helvetica", 6.2)
+    c.drawString(right_x, head_top - 1.2*cm, "PUNTO DE VENTA")
+    c.drawString(right_x + 3.6*cm, head_top - 1.2*cm, "COMP. N°")
+    sf(TEXT); c.setFont("Helvetica-Bold", 13)
+    c.drawString(right_x, head_top - 1.6*cm, str(f["punto_venta"]).zfill(5))
+    c.drawString(right_x + 3.6*cm, head_top - 1.6*cm, str(f["nro_cbte"]).zfill(8))
+
+    sf(MUTED); c.setFont("Helvetica", 6.2)
+    c.drawString(right_x, head_top - 2.1*cm, "FECHA DE EMISIÓN")
+    sf(TEXT); c.setFont("Helvetica", 9)
+    c.drawString(right_x, head_top - 2.45*cm, _fmt_date(f.get("fecha_cbte")))
+
+    # Barra de datos fiscales del emisor
+    bar_y = head_top - c_box_h - 0.5*cm
+    bar_h = 0.95*cm
+    sf(SOFT_BG); ss(BORDER); c.setLineWidth(0.4)
+    c.roundRect(x0, bar_y - bar_h, x1 - x0, bar_h, 0.2*cm, stroke=1, fill=1)
+    cells = (
+        ("CUIT EMISOR", str(cuit_e)),
+        ("INGRESOS BRUTOS", iibb or "—"),
+        ("INICIO DE ACTIVIDADES", ini_act or "—"),
+    )
+    cell_w = (x1 - x0) / 3
+    for i, (lbl, val) in enumerate(cells):
+        cx = x0 + i*cell_w + 0.3*cm
+        sf(MUTED); c.setFont("Helvetica", 6.2)
+        c.drawString(cx, bar_y - 0.3*cm, lbl)
+        sf(TEXT); c.setFont("Helvetica-Bold", 10)
+        c.drawString(cx, bar_y - 0.7*cm, str(val))
+        if i > 0:
+            ss(BORDER); c.setLineWidth(0.4)
+            c.line(x0 + i*cell_w, bar_y - 0.2*cm,
+                   x0 + i*cell_w, bar_y - bar_h + 0.2*cm)
+
+    # Período
+    per_y = bar_y - bar_h - 0.55*cm
     desde = _fmt_date(f.get("fch_serv_desde") or f.get("fecha_cbte"))
     hasta = _fmt_date(f.get("fch_serv_hasta") or f.get("fecha_cbte"))
     vto_p = _fmt_date(f.get("fch_vto_pago")   or f.get("fecha_cbte"))
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 0.2*cm, py, "Período Facturado Desde:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 4.1*cm, py, desde)
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 6.2*cm, py, "Hasta:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 7.3*cm, py, hasta)
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 10.0*cm, py, "Fecha de Vto. para el pago:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 14.4*cm, py, vto_p)
+    col_w = (x1 - x0) / 3
+    for i, (lbl, val) in enumerate((("PERÍODO DESDE", desde),
+                                     ("HASTA", hasta),
+                                     ("VTO. PARA EL PAGO", vto_p))):
+        cx = x0 + i*col_w
+        sf(MUTED); c.setFont("Helvetica", 6.2)
+        c.drawString(cx, per_y, lbl)
+        sf(TEXT); c.setFont("Helvetica", 9)
+        c.drawString(cx, per_y - 0.35*cm, val)
 
-    # Datos del receptor (cliente)
-    cli_top = per_top - per_h
-    cli_h   = 2.1*cm
-    c.rect(x0, cli_top - cli_h, x1 - x0, cli_h, stroke=1, fill=0)
-    cy = cli_top - 0.45*cm
-    cuit_r = f.get("nro_doc") or ""
+    # Línea acento
+    line_y = per_y - 0.7*cm
+    ss(PRIMARY); c.setLineWidth(1.0)
+    c.line(x0, line_y, x1, line_y)
+
+    # Receptor
+    sf(PRIMARY); c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(x0, line_y - 0.35*cm, "CLIENTE")
+
+    tipo_doc_r = f.get("tipo_doc") or 99
+    doc_label = TIPO_DOC_RECEPTOR.get(tipo_doc_r, "Doc")
+    nro_doc_r = f.get("nro_doc") or ""
     nombre_r = f.get("receptor_nombre") or "Consumidor Final"
     dom_r    = f.get("receptor_dom") or ""
     cond_r   = COND_IVA_RECEPTOR.get(f.get("cond_iva_receptor") or 0, "")
     cond_v   = f.get("cond_venta") or "Contado"
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 0.2*cm, cy, "CUIT:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 1.2*cm, cy, str(cuit_r))
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 5.5*cm, cy, "Apellido y Nombre / Razón Social:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 10.4*cm, cy, nombre_r[:55])
-    cy -= 0.5*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 0.2*cm, cy, "Condición frente al IVA:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 3.7*cm, cy, cond_r)
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 10.0*cm, cy, "Domicilio:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 11.5*cm, cy, dom_r[:50])
-    cy -= 0.5*cm
-    c.setFont("Helvetica-Bold", 8); c.drawString(x0 + 0.2*cm, cy, "Condición de venta:")
-    c.setFont("Helvetica", 8);      c.drawString(x0 + 3.0*cm, cy, cond_v)
 
-    # Tabla de ítems
-    tbl_top = cli_top - cli_h - 0.15*cm
-    headers = [
-        ("Código",            1.6*cm),
-        ("Producto / Servicio", 6.8*cm),
-        ("Cantidad",          1.8*cm),
-        ("U. Medida",         1.7*cm),
-        ("Precio Unit.",      2.0*cm),
-        ("% Bonif",           1.3*cm),
-        ("Imp. Bonif.",       1.6*cm),
-        ("Subtotal",          1.8*cm),
-    ]
-    total_w = sum(cw for _, cw in headers)
-    scale = (x1 - x0) / total_w
-    headers = [(t, cw * scale) for t, cw in headers]
+    rec_y = line_y - 0.9*cm
+    rec_fields = (
+        (doc_label.upper(), str(nro_doc_r) or "—"),
+        ("APELLIDO Y NOMBRE / RAZÓN SOCIAL", nombre_r[:55]),
+        ("CONDICIÓN FRENTE AL IVA", cond_r or "—"),
+        ("DOMICILIO", (dom_r[:50] or "—")),
+        ("CONDICIÓN DE VENTA", cond_v),
+    )
+    col_w2 = (x1 - x0) / 2
+    for i, (lbl, val) in enumerate(rec_fields):
+        row = i // 2
+        col = i % 2
+        fx = x0 + col * col_w2
+        fy = rec_y - row * 0.85*cm
+        sf(MUTED); c.setFont("Helvetica", 6.2)
+        c.drawString(fx, fy, lbl)
+        sf(TEXT); c.setFont("Helvetica", 9)
+        c.drawString(fx, fy - 0.33*cm, str(val))
 
-    row_h = 0.6*cm
-    c.setFillColorRGB(0.92, 0.92, 0.92)
-    c.rect(x0, tbl_top - row_h, x1 - x0, row_h, stroke=1, fill=1)
-    c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica-Bold", 8)
+    rec_rows = (len(rec_fields) + 1) // 2
+    rec_end_y = rec_y - rec_rows * 0.85*cm + 0.15*cm
+
+    # Tabla ítems
+    tbl_top = rec_end_y - 0.25*cm
+    headers = (
+        ("Código",              1.4*cm, "left"),
+        ("Producto / Servicio", 6.2*cm, "left"),
+        ("Cantidad",            1.6*cm, "right"),
+        ("U. Medida",           1.6*cm, "left"),
+        ("Precio Unit.",        2.0*cm, "right"),
+        ("% Bonif.",            1.3*cm, "right"),
+        ("Imp. Bonif.",         1.6*cm, "right"),
+        ("Subtotal",            2.2*cm, "right"),
+    )
+    total_w = sum(cw for _, cw, _ in headers)
+    scale_h = (x1 - x0) / total_w
+    headers = [(t, cw*scale_h, a) for t, cw, a in headers]
+
+    row_h = 0.7*cm
+    sf(PRIMARY); ss(PRIMARY)
+    c.rect(x0, tbl_top - row_h, x1 - x0, row_h, stroke=0, fill=1)
+    sf(WHITE); c.setFont("Helvetica-Bold", 8)
     cx = x0
-    col_x = []
-    for title, cw in headers:
-        col_x.append(cx)
-        c.drawString(cx + 0.1*cm, tbl_top - row_h + 0.2*cm, title)
+    col_x = [cx]
+    for title, cw, align in headers:
+        if align == "right":
+            c.drawRightString(cx + cw - 0.15*cm, tbl_top - row_h + 0.25*cm, title)
+        else:
+            c.drawString(cx + 0.15*cm, tbl_top - row_h + 0.25*cm, title)
         cx += cw
-    col_x.append(x1)
+        col_x.append(cx)
 
-    # Filas
     y = tbl_top - row_h
-    c.setFont("Helvetica", 8)
-    for it in items:
+    for idx, it in enumerate(items):
         y -= row_h
-        desc  = str(it["descripcion"])
-        cant  = it["cantidad"]
-        pu    = it["precio_unit"]
-        sub   = it["subtotal"]
-        # Código vacío, U. Medida "unidades", bonif 0
-        c.drawString(col_x[0] + 0.1*cm, y + 0.2*cm, "")
-        c.drawString(col_x[1] + 0.1*cm, y + 0.2*cm, desc[:55])
-        c.drawRightString(col_x[3] - 0.1*cm, y + 0.2*cm, f"{cant:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        c.drawString(col_x[3] + 0.1*cm, y + 0.2*cm, "unidades")
-        c.drawRightString(col_x[5] - 0.1*cm, y + 0.2*cm, _fmt_money(pu))
-        c.drawRightString(col_x[6] - 0.1*cm, y + 0.2*cm, "0,00")
-        c.drawRightString(col_x[7] - 0.1*cm, y + 0.2*cm, "0,00")
-        c.drawRightString(col_x[8] - 0.1*cm, y + 0.2*cm, _fmt_money(sub))
+        if idx % 2 == 0:
+            sf(SOFT_BG); ss(SOFT_BG)
+            c.rect(x0, y, x1 - x0, row_h, stroke=0, fill=1)
+        desc = str(it["descripcion"])
+        cant = it["cantidad"]
+        pu   = it["precio_unit"]
+        sub  = it["subtotal"]
+        cant_s = f"{cant:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        vals = (
+            ("",                 "left"),
+            (desc[:55],          "left"),
+            (cant_s,             "right"),
+            ("unidades",         "left"),
+            (_fmt_money(pu),     "right"),
+            ("0,00",             "right"),
+            ("0,00",             "right"),
+            (_fmt_money(sub),    "right"),
+        )
+        sf(TEXT); c.setFont("Helvetica", 8.5)
+        for i, (text, align) in enumerate(vals):
+            if align == "right":
+                c.drawRightString(col_x[i+1] - 0.15*cm, y + 0.25*cm, text)
+            else:
+                c.drawString(col_x[i] + 0.15*cm, y + 0.25*cm, text)
 
-    # Bloque totales (abajo a la derecha)
-    tot_w  = 7.0*cm
-    tot_h  = 2.4*cm
-    tot_x  = x1 - tot_w
-    tot_y  = 4.2*cm
-    c.rect(tot_x, tot_y, tot_w, tot_h, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(tot_x + tot_w - 3.0*cm, tot_y + tot_h - 0.7*cm, "Subtotal: $")
+    # Totales
+    tot_w = 7.4*cm
+    tot_x = x1 - tot_w
+    tot_y_top = 5.4*cm
+    sf(TEXT); c.setFont("Helvetica", 9)
+    c.drawRightString(tot_x + tot_w - 3.2*cm, tot_y_top, "Subtotal")
     c.setFont("Helvetica", 10)
-    c.drawRightString(tot_x + tot_w - 0.2*cm, tot_y + tot_h - 0.7*cm, _fmt_money(f["imp_total"]))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(tot_x + tot_w - 3.0*cm, tot_y + tot_h - 1.4*cm, "Importe Otros Tributos: $")
-    c.setFont("Helvetica", 10)
-    c.drawRightString(tot_x + tot_w - 0.2*cm, tot_y + tot_h - 1.4*cm, "0,00")
-    c.setFont("Helvetica-Bold", 11)
-    c.drawRightString(tot_x + tot_w - 3.0*cm, tot_y + tot_h - 2.1*cm, "Importe Total: $")
-    c.setFont("Helvetica-Bold", 11)
-    c.drawRightString(tot_x + tot_w - 0.2*cm, tot_y + tot_h - 2.1*cm, _fmt_money(f["imp_total"]))
+    c.drawRightString(tot_x + tot_w - 0.25*cm, tot_y_top, f"$ {_fmt_money(f['imp_total'])}")
 
-    # Pie: QR + ARCA + CAE + Pág
-    # QR
+    c.setFont("Helvetica", 9)
+    c.drawRightString(tot_x + tot_w - 3.2*cm, tot_y_top - 0.5*cm, "Importe Otros Tributos")
+    c.setFont("Helvetica", 10)
+    c.drawRightString(tot_x + tot_w - 0.25*cm, tot_y_top - 0.5*cm, "$ 0,00")
+
+    ss(BORDER); c.setLineWidth(0.4)
+    c.line(tot_x, tot_y_top - 0.9*cm, tot_x + tot_w, tot_y_top - 0.9*cm)
+
+    tb_y = tot_y_top - 1.8*cm
+    sf(PRIMARY); ss(PRIMARY)
+    c.roundRect(tot_x, tb_y, tot_w, 0.9*cm, 0.15*cm, stroke=0, fill=1)
+    sf(WHITE); c.setFont("Helvetica-Bold", 11)
+    c.drawString(tot_x + 0.3*cm, tb_y + 0.3*cm, "IMPORTE TOTAL")
+    c.setFont("Helvetica-Bold", 13)
+    c.drawRightString(tot_x + tot_w - 0.3*cm, tb_y + 0.28*cm, f"$ {_fmt_money(f['imp_total'])}")
+
+    # Pie: QR + ARCA + CAE
     qr_img = _qr_arca_image(f, str(cuit_e))
-    qr_size = 2.8*cm
-    qr_x, qr_y = x0, 0.6*cm
+    qr_size = 2.6*cm
+    qr_x, qr_y = x0, 0.9*cm
     if qr_img is not None:
         bio = _io.BytesIO()
         qr_img.save(bio, format="PNG")
         bio.seek(0)
         c.drawImage(ImageReader(bio), qr_x, qr_y, width=qr_size, height=qr_size, mask='auto')
     else:
+        ss(BORDER); sf(WHITE)
         c.rect(qr_x, qr_y, qr_size, qr_size, stroke=1, fill=0)
-        c.setFont("Helvetica", 6)
+        sf(MUTED); c.setFont("Helvetica", 6)
         c.drawCentredString(qr_x + qr_size/2, qr_y + qr_size/2, "QR")
 
-    # Bloque ARCA
-    arca_x = qr_x + qr_size + 0.3*cm
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(arca_x, qr_y + qr_size - 0.7*cm, "ARCA")
-    c.setFont("Helvetica", 6)
-    c.drawString(arca_x, qr_y + qr_size - 1.1*cm, "AGENCIA DE RECAUDACIÓN")
-    c.drawString(arca_x, qr_y + qr_size - 1.35*cm, "Y CONTROL ADUANERO")
-    c.setFont("Helvetica-Oblique", 9)
-    c.drawString(arca_x, qr_y + 0.5*cm, "Comprobante Autorizado")
-    c.setFont("Helvetica-Oblique", 6)
+    arca_x = qr_x + qr_size + 0.4*cm
+    sf(TEXT); c.setFont("Helvetica-Bold", 13)
+    c.drawString(arca_x, qr_y + qr_size - 0.5*cm, "ARCA")
+    sf(MUTED); c.setFont("Helvetica", 6)
+    c.drawString(arca_x, qr_y + qr_size - 0.85*cm, "Agencia de Recaudación")
+    c.drawString(arca_x, qr_y + qr_size - 1.05*cm, "y Control Aduanero")
+    sf(TEXT); c.setFont("Helvetica-Oblique", 7.5)
+    c.drawString(arca_x, qr_y + 0.4*cm, "Comprobante Autorizado")
+    sf(MUTED); c.setFont("Helvetica-Oblique", 5.5)
     c.drawString(arca_x, qr_y + 0.1*cm,
                  "Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación")
 
-    # CAE y página (derecha)
-    c.setFont("Helvetica", 9)
-    c.drawCentredString((x0 + x1)/2, qr_y + qr_size - 0.7*cm, "Pág. 1/1")
-    c.setFont("Helvetica-Bold", 9)
-    c.drawRightString(x1, qr_y + qr_size - 0.7*cm, f"CAE N°:  {f.get('cae','')}")
-    c.drawRightString(x1, qr_y + qr_size - 1.15*cm, f"Fecha de Vto. de CAE:  {_fmt_date(f.get('vto_cae'))}")
+    cae_x = x1 - 6.2*cm
+    sf(MUTED); c.setFont("Helvetica", 6.2)
+    c.drawString(cae_x, qr_y + qr_size - 0.5*cm, "CAE N°")
+    sf(TEXT); c.setFont("Helvetica-Bold", 12)
+    c.drawString(cae_x, qr_y + qr_size - 0.95*cm, str(f.get('cae','') or "—"))
+    sf(MUTED); c.setFont("Helvetica", 6.2)
+    c.drawString(cae_x, qr_y + qr_size - 1.5*cm, "FECHA DE VTO. DE CAE")
+    sf(TEXT); c.setFont("Helvetica", 9)
+    c.drawString(cae_x, qr_y + qr_size - 1.85*cm, _fmt_date(f.get("vto_cae")))
+
+    sf(MUTED); c.setFont("Helvetica", 7)
+    c.drawRightString(x1, qr_y + 0.15*cm, "Pág. 1/1")
 
 
-def _build_factura_pdf(id: int) -> bytes:
+def _build_factura_pdf(id: int, copias: tuple = ("ORIGINAL", "DUPLICADO", "TRIPLICADO")) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     import io
@@ -889,7 +959,7 @@ def _build_factura_pdf(id: int) -> bytes:
     buf = io.BytesIO()
     c   = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
-    for copia in ("ORIGINAL", "DUPLICADO", "TRIPLICADO"):
+    for copia in copias:
         _draw_page(c, w, h, copia, f, items, cfg)
         c.showPage()
     c.save()
@@ -897,14 +967,21 @@ def _build_factura_pdf(id: int) -> bytes:
 
 
 @app.get("/facturas/{id}/pdf")
-async def pdf_factura(id: int):
+async def pdf_factura(id: int, copias: str = "todas"):
+    modo = (copias or "todas").lower()
+    if modo in ("original", "solo", "1"):
+        pages = ("ORIGINAL",)
+        suffix = "_original"
+    else:
+        pages = ("ORIGINAL", "DUPLICADO", "TRIPLICADO")
+        suffix = ""
     try:
-        pdf_bytes = _build_factura_pdf(id)
+        pdf_bytes = _build_factura_pdf(id, pages)
     except ImportError:
         raise HTTPException(500, "Instalar reportlab: pip install reportlab")
     import io
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=factura_c_{id}.pdf"})
+        headers={"Content-Disposition": f"attachment; filename=factura_c_{id}{suffix}.pdf"})
 
 @app.get("/clientes")
 def listar_clientes():
@@ -1167,7 +1244,7 @@ def enviar_factura_email(id: int, req: EnviarEmailIn):
         raise HTTPException(400, "Falta dirección de email destinataria")
 
     try:
-        pdf_bytes = _build_factura_pdf(id)
+        pdf_bytes = _build_factura_pdf(id, ("ORIGINAL",))
     except ImportError:
         raise HTTPException(500, "Instalar reportlab: pip install reportlab")
 

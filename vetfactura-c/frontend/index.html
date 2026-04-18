@@ -442,7 +442,8 @@
       <h3>¡Factura C emitida!</h3>
       <div class="result-box" id="resultBox"></div>
       <div class="modal-btns">
-        <button class="btn btn--outline" id="btnPDF">⬇ Descargar PDF</button>
+        <button class="btn btn--outline" id="btnPDF">⬇ PDF (Original + Dup. + Trip.)</button>
+        <button class="btn btn--outline" id="btnPDFOriginal">⬇ PDF (solo Original)</button>
         <button class="btn btn--primary" id="btnNueva">✦ Nueva Factura</button>
       </div>
     </div>
@@ -515,6 +516,31 @@
       <div class="modal-btns" style="margin-top:1.5rem">
         <button class="btn btn--outline" id="btnCancelCliente">Cancelar</button>
         <button class="btn btn--primary" id="btnGuardarCliente">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Enviar por email ══ -->
+  <div class="overlay" id="ovEmail">
+    <div class="modal">
+      <h3 style="margin-bottom:.4rem">Enviar factura por email</h3>
+      <p class="modal-sub" id="emTitulo">Comprobante</p>
+      <input type="hidden" id="emFacturaId" value="" />
+      <div class="field">
+        <label>Destinatario</label>
+        <input class="input" type="email" id="emDestino" placeholder="cliente@email.com" />
+      </div>
+      <div class="field" style="margin-top:.65rem">
+        <label>Asunto <span style="color:var(--text-3); font-weight:400">(opcional)</span></label>
+        <input class="input" type="text" id="emAsunto" placeholder="Asunto del correo" />
+      </div>
+      <div class="field" style="margin-top:.65rem">
+        <label>Mensaje <span style="color:var(--text-3); font-weight:400">(opcional)</span></label>
+        <textarea class="input" id="emCuerpo" rows="4" placeholder="Dejá vacío para usar el mensaje por defecto"></textarea>
+      </div>
+      <div class="modal-btns" style="margin-top:1.5rem">
+        <button class="btn btn--outline" id="btnCancelEmail">Cancelar</button>
+        <button class="btn btn--primary" id="btnEnviarEmail">✉ Enviar</button>
       </div>
     </div>
   </div>

@@ -107,10 +107,16 @@ function setupButtons() {
   document.getElementById('btnClosePreview').addEventListener('click', () => closeOverlay('ovPreview'));
   document.getElementById('btnEmitirPreview').addEventListener('click', () => { closeOverlay('ovPreview'); emitir(); });
   document.getElementById('btnNueva').addEventListener('click', () => { closeOverlay('ovExito'); resetForm(); });
-  document.getElementById('btnPDF').addEventListener('click', descargarPDF);
+  document.getElementById('btnPDF').addEventListener('click', () => descargarPDF('todas'));
+  document.getElementById('btnPDFOriginal').addEventListener('click', () => descargarPDF('original'));
   document.getElementById('btnNuevoCliente').addEventListener('click', () => abrirModalCliente());
   document.getElementById('btnCancelCliente').addEventListener('click', () => closeOverlay('ovCliente'));
   document.getElementById('btnGuardarCliente').addEventListener('click', guardarCliente);
+  document.getElementById('btnCancelEmail').addEventListener('click', () => closeOverlay('ovEmail'));
+  document.getElementById('btnEnviarEmail').addEventListener('click', confirmarEnvioEmail);
+  document.getElementById('emDestino').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarEnvioEmail(); }
+  });
 
   // Cerrar overlay al click fuera
   document.querySelectorAll('.overlay').forEach(ov => {
@@ -307,6 +313,8 @@ function agregarAlHistorial(r, payload) {
 
   const tr = document.createElement('tr');
   const email = (payload.receptor_email || '').replace(/"/g,'&quot;');
+  const nombre = (payload.receptor_nombre || '').replace(/"/g,'&quot;').replace(/'/g,"\\'");
+  const nroDoc = (payload.nro_doc || '').replace(/"/g,'&quot;');
   tr.innerHTML = `
     <td>${fmtNro(r.punto_venta, r.nro_cbte)}</td>
     <td>${fmtFecha(payload.fecha_cbte)}</td>
@@ -315,8 +323,9 @@ function agregarAlHistorial(r, payload) {
     <td class="cae-text">${r.cae}</td>
     <td>${fmtFecha(r.vto_cae)}</td>
     <td>
-      <button class="btn-sm" onclick="descargarPDFById(${r.id})">⬇ PDF</button>
-      <button class="btn-sm" onclick="enviarFacturaPorEmail(${r.id}, '${email}')">✉ Email</button>
+      <button class="btn-sm" onclick="descargarPDFById(${r.id}, 'todas')" title="Original + Duplicado + Triplicado">⬇ PDF x3</button>
+      <button class="btn-sm" onclick="descargarPDFById(${r.id}, 'original')" title="Solo Original">⬇ Orig.</button>
+      <button class="btn-sm" onclick="enviarFacturaPorEmail(${r.id}, '${email}', '${nombre}', '${nroDoc}')">✉ Email</button>
       <button class="btn-sm" onclick="enviarFacturaPorWhatsapp(${r.id})">🟢 WhatsApp</button>
     </td>
   `;
@@ -480,6 +489,8 @@ function renderHistorial() {
     page.forEach(r => {
       const tr = document.createElement('tr');
       const email = (r.receptor_email || '').replace(/"/g,'&quot;');
+      const nombre = (r.receptor_nombre || '').replace(/"/g,'&quot;').replace(/'/g,"\\'");
+      const nroDoc = (r.nro_doc || '').replace(/"/g,'&quot;');
       tr.innerHTML = `
         <td>${fmtNro(r.punto_venta, r.nro_cbte)}</td>
         <td>${fmtFecha(r.fecha_cbte)}</td>
@@ -488,8 +499,9 @@ function renderHistorial() {
         <td class="cae-text">${r.cae || '—'}</td>
         <td>${r.vto_cae ? fmtFecha(r.vto_cae) : '—'}</td>
         <td>
-          <button class="btn-sm" onclick="descargarPDFById(${r.id})">⬇ PDF</button>
-          <button class="btn-sm" onclick="enviarFacturaPorEmail(${r.id}, '${email}')">✉ Email</button>
+          <button class="btn-sm" onclick="descargarPDFById(${r.id}, 'todas')" title="Original + Duplicado + Triplicado">⬇ PDF x3</button>
+          <button class="btn-sm" onclick="descargarPDFById(${r.id}, 'original')" title="Solo Original">⬇ Orig.</button>
+          <button class="btn-sm" onclick="enviarFacturaPorEmail(${r.id}, '${email}', '${nombre}', '${nroDoc}')">✉ Email</button>
           <button class="btn-sm" onclick="enviarFacturaPorWhatsapp(${r.id})">🟢 WhatsApp</button>
         </td>
       `;
@@ -694,23 +706,24 @@ function mostrarPreview() {
 // ═══════════════════════════════════════════
 // PDF
 // ═══════════════════════════════════════════
-async function descargarPDF() {
+async function descargarPDF(copias = 'todas') {
   if (!state.lastResult?.id) {
     alert('El PDF se genera desde el backend. URL: GET /facturas/{id}/pdf');
     return;
   }
-  descargarPDFById(state.lastResult.id);
+  descargarPDFById(state.lastResult.id, copias);
 }
 
-async function descargarPDFById(id) {
+async function descargarPDFById(id, copias = 'todas') {
   try {
-    const res = await fetch(`${API}/facturas/${id}/pdf`);
+    const qs = copias === 'original' ? '?copias=original' : '';
+    const res = await fetch(`${API}/facturas/${id}/pdf${qs}`);
     if (!res.ok) throw new Error();
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `factura_c_${id}.pdf`;
+    a.download = copias === 'original' ? `factura_c_${id}_original.pdf` : `factura_c_${id}.pdf`;
     a.click();
   } catch (_) {
     toast('PDF no disponible (backend no conectado).', 'warn');
@@ -1018,19 +1031,51 @@ async function enviarFacturaPorWhatsapp(id) {
   }
 }
 
-async function enviarFacturaPorEmail(id, emailSugerido) {
-  const to = prompt('Enviar factura a:', emailSugerido || '');
-  if (!to) return;
+async function enviarFacturaPorEmail(id, emailSugerido, nombre, nroDoc) {
+  let email = (emailSugerido || '').trim();
+  if (!email && Array.isArray(state.clientes) && state.clientes.length) {
+    const match = state.clientes.find(c =>
+      (nroDoc && String(c.nro_doc) === String(nroDoc)) ||
+      (nombre && (c.nombre || '').toLowerCase() === String(nombre).toLowerCase())
+    );
+    if (match && match.email) email = match.email;
+  }
+  document.getElementById('emFacturaId').value = id;
+  document.getElementById('emDestino').value = email;
+  document.getElementById('emAsunto').value = '';
+  document.getElementById('emCuerpo').value = '';
+  document.getElementById('emTitulo').textContent = nombre
+    ? `Factura para ${nombre}`
+    : 'Comprobante';
+  openOverlay('ovEmail');
+  setTimeout(() => document.getElementById('emDestino').focus(), 50);
+}
+
+async function confirmarEnvioEmail() {
+  const id      = document.getElementById('emFacturaId').value;
+  const to      = document.getElementById('emDestino').value.trim();
+  const subject = document.getElementById('emAsunto').value.trim();
+  const body    = document.getElementById('emCuerpo').value.trim();
+  if (!to || !/^\S+@\S+\.\S+$/.test(to)) {
+    toast('Ingresá un email válido', 'warn');
+    return;
+  }
+  const btn = document.getElementById('btnEnviarEmail');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     const res = await fetch(`${API}/facturas/${id}/email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to }),
+      body: JSON.stringify({ to, subject: subject || undefined, body: body || undefined }),
     });
     if (!res.ok) throw new Error((await res.json()).detail || `Error ${res.status}`);
+    closeOverlay('ovEmail');
     toast(`Factura enviada a ${to}`);
   } catch (e) {
     toast(`No se pudo enviar: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 
