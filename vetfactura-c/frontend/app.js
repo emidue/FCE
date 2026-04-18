@@ -117,6 +117,11 @@ function setupButtons() {
   document.getElementById('emDestino').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); confirmarEnvioEmail(); }
   });
+  document.getElementById('btnCancelWa').addEventListener('click', () => closeOverlay('ovWhatsapp'));
+  document.getElementById('btnEnviarWa').addEventListener('click', confirmarEnvioWhatsapp);
+  document.getElementById('waDestino').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarEnvioWhatsapp(); }
+  });
 
   // Cerrar overlay al click fuera
   document.querySelectorAll('.overlay').forEach(ov => {
@@ -615,6 +620,7 @@ function abrirModalCliente(id = null) {
   document.getElementById('ncNroDoc').value  = c ? c.nro_doc : '';
   document.getElementById('ncCondIva').value = c ? (c.cond_iva || 5) : '5';
   document.getElementById('ncEmail').value      = c ? (c.email || '') : '';
+  document.getElementById('ncTelefono').value   = c ? (c.telefono || '') : '';
   document.getElementById('ncDomicilio').value  = c ? (c.domicilio || '') : '';
   openOverlay('ovCliente');
 }
@@ -644,8 +650,9 @@ async function guardarCliente() {
   const email   = document.getElementById('ncEmail').value.trim();
   if (!nombre) { toast('El nombre es obligatorio.', 'warn'); return; }
 
+  const telefono  = document.getElementById('ncTelefono').value.trim();
   const domicilio = document.getElementById('ncDomicilio').value.trim();
-  const payload = { nombre, tipo_doc: tipoDoc, nro_doc: nroDoc, cond_iva: condIva, email, domicilio };
+  const payload = { nombre, tipo_doc: tipoDoc, nro_doc: nroDoc, cond_iva: condIva, email, domicilio, telefono };
 
   try {
     let res;
@@ -1003,32 +1010,47 @@ async function enviarFacturaPorWhatsapp(id) {
     if (!res.ok) throw new Error(`Error ${res.status}`);
     const f = await res.json();
 
-    const tel = prompt(
-      'Número de WhatsApp (con código de país, sin espacios ni +):\n' +
-      'Ej: 5491122334455',
-      ''
-    );
-    if (!tel) return;
-    const telLimpio = tel.replace(/\D/g,'');
-    if (telLimpio.length < 8) { toast('Número inválido.', 'warn'); return; }
+    let telefono = '';
+    if (Array.isArray(state.clientes) && state.clientes.length) {
+      const match = state.clientes.find(c =>
+        (f.nro_doc && String(c.nro_doc) === String(f.nro_doc)) ||
+        (f.receptor_nombre && (c.nombre || '').toLowerCase() === String(f.receptor_nombre).toLowerCase())
+      );
+      if (match && match.telefono) telefono = String(match.telefono).replace(/\D/g, '');
+    }
 
-    const nro   = fmtNro(f.punto_venta, f.nro_cbte);
-    const total = fmt(f.imp_total);
+    const nro    = fmtNro(f.punto_venta, f.nro_cbte);
+    const total  = fmt(f.imp_total);
     const nombre = f.receptor_nombre || 'cliente';
-    const texto =
+    const mensaje =
       `Hola ${nombre}, te paso la Factura C ${nro} por ${total}. ` +
       `CAE: ${f.cae || '—'}. ` +
-      `Te adjunto el PDF en un momento.`;
+      `Te adjunto el PDF a continuación.`;
 
-    // Disparar descarga del PDF para que el usuario lo adjunte manualmente
-    descargarPDFById(id);
-
-    const url = `https://wa.me/${telLimpio}?text=${encodeURIComponent(texto)}`;
-    window.open(url, '_blank');
-    toast('PDF descargado. Adjuntalo en la ventana de WhatsApp.');
+    document.getElementById('waFacturaId').value = id;
+    document.getElementById('waDestino').value   = telefono;
+    document.getElementById('waMensaje').value   = mensaje;
+    document.getElementById('waTitulo').textContent = nombre
+      ? `Factura para ${nombre}`
+      : 'Comprobante';
+    openOverlay('ovWhatsapp');
+    setTimeout(() => document.getElementById('waDestino').focus(), 50);
   } catch (e) {
     toast(`No se pudo preparar el envío: ${e.message}`, 'error');
   }
+}
+
+function confirmarEnvioWhatsapp() {
+  const id        = document.getElementById('waFacturaId').value;
+  const telRaw    = document.getElementById('waDestino').value;
+  const mensaje   = document.getElementById('waMensaje').value.trim();
+  const telLimpio = (telRaw || '').replace(/\D/g, '');
+  if (telLimpio.length < 8) { toast('Número inválido.', 'warn'); return; }
+  descargarPDFById(id, 'original');
+  const url = `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensaje)}`;
+  window.open(url, '_blank');
+  closeOverlay('ovWhatsapp');
+  toast('PDF descargado. En WhatsApp tocá el clip 📎 y adjuntalo como documento.', 'warn');
 }
 
 async function enviarFacturaPorEmail(id, emailSugerido, nombre, nroDoc) {

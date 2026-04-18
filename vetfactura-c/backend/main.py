@@ -207,6 +207,8 @@ def init_db():
             db.execute("ALTER TABLE clientes ADD COLUMN cond_iva INTEGER NOT NULL DEFAULT 5")
         if "domicilio" not in cols:
             db.execute("ALTER TABLE clientes ADD COLUMN domicilio TEXT DEFAULT ''")
+        if "telefono" not in cols:
+            db.execute("ALTER TABLE clientes ADD COLUMN telefono TEXT DEFAULT ''")
         # Migración: agregar columnas nuevas a facturas
         fcols = [r[1] for r in db.execute("PRAGMA table_info(facturas)").fetchall()]
         for col, ddl in [
@@ -462,6 +464,7 @@ class ClienteIn(BaseModel):
     email:     Optional[str] = None
     cond_iva:  int = 5
     domicilio: Optional[str] = ""
+    telefono:  Optional[str] = ""
 
 class EmisorIn(BaseModel):
     razon_social:       str
@@ -997,8 +1000,9 @@ def listar_clientes():
 def crear_cliente(cliente: ClienteIn):
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO clientes (nombre,tipo_doc,nro_doc,email,cond_iva,domicilio) VALUES (?,?,?,?,?,?)",
-            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva, cliente.domicilio)
+            "INSERT INTO clientes (nombre,tipo_doc,nro_doc,email,cond_iva,domicilio,telefono) VALUES (?,?,?,?,?,?,?)",
+            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email,
+             cliente.cond_iva, cliente.domicilio, cliente.telefono)
         )
     return {"id": cur.lastrowid, **cliente.dict()}
 
@@ -1006,8 +1010,9 @@ def crear_cliente(cliente: ClienteIn):
 def actualizar_cliente(id: int, cliente: ClienteIn):
     with get_db() as db:
         db.execute(
-            "UPDATE clientes SET nombre=?, tipo_doc=?, nro_doc=?, email=?, cond_iva=?, domicilio=? WHERE id=?",
-            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva, cliente.domicilio, id)
+            "UPDATE clientes SET nombre=?, tipo_doc=?, nro_doc=?, email=?, cond_iva=?, domicilio=?, telefono=? WHERE id=?",
+            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email,
+             cliente.cond_iva, cliente.domicilio, cliente.telefono, id)
         )
     return {"id": id, **cliente.dict()}
 

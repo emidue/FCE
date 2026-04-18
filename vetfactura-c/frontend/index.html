@@ -511,7 +511,10 @@
           <option value="16">Monotrib. Promovido</option>
         </select></div>
       </div>
-      <div class="field" style="margin-top:.65rem"><label>Email</label><input class="input" type="email" id="ncEmail" placeholder="opcional" /></div>
+      <div class="row-2" style="margin-top:.65rem">
+        <div class="field"><label>Email</label><input class="input" type="email" id="ncEmail" placeholder="opcional" /></div>
+        <div class="field"><label>Teléfono / WhatsApp</label><input class="input" type="tel" id="ncTelefono" placeholder="Ej: 5491122334455" /></div>
+      </div>
       <div class="field" style="margin-top:.65rem"><label>Domicilio</label><input class="input" type="text" id="ncDomicilio" placeholder="opcional" /></div>
       <div class="modal-btns" style="margin-top:1.5rem">
         <button class="btn btn--outline" id="btnCancelCliente">Cancelar</button>
@@ -541,6 +544,35 @@
       <div class="modal-btns" style="margin-top:1.5rem">
         <button class="btn btn--outline" id="btnCancelEmail">Cancelar</button>
         <button class="btn btn--primary" id="btnEnviarEmail">✉ Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Enviar por WhatsApp ══ -->
+  <div class="overlay" id="ovWhatsapp">
+    <div class="modal">
+      <h3 style="margin-bottom:.4rem">Enviar factura por WhatsApp</h3>
+      <p class="modal-sub" id="waTitulo">Comprobante</p>
+      <input type="hidden" id="waFacturaId" value="" />
+      <div class="field">
+        <label>Número de WhatsApp</label>
+        <input class="input" type="tel" id="waDestino" placeholder="5491122334455" />
+        <small style="display:block; margin-top:.3rem; color:var(--text-3); font-size:.78rem">
+          Con código de país, sin espacios ni +. Ej: 5491122334455
+        </small>
+      </div>
+      <div class="field" style="margin-top:.65rem">
+        <label>Mensaje <span style="color:var(--text-3); font-weight:400">(editable)</span></label>
+        <textarea class="input" id="waMensaje" rows="4"></textarea>
+      </div>
+      <div style="margin-top:.9rem; padding:.7rem .85rem; background:#FFF7E6; border:1px solid #F5C56A; border-radius:.5rem; font-size:.8rem; color:#8A5A00; line-height:1.35">
+        <strong>Importante:</strong> WhatsApp no permite adjuntar archivos desde un link.
+        Al confirmar, el PDF se descarga en tu equipo y se abre WhatsApp con el mensaje listo;
+        vos tenés que <strong>adjuntar manualmente</strong> el PDF en el chat (clip 📎 → Documento).
+      </div>
+      <div class="modal-btns" style="margin-top:1.2rem">
+        <button class="btn btn--outline" id="btnCancelWa">Cancelar</button>
+        <button class="btn btn--primary" id="btnEnviarWa">🟢 Descargar PDF y abrir chat</button>
       </div>
     </div>
   </div>
