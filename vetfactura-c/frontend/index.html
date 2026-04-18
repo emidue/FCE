@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="topbar-brand">
       <span class="brand-paw">🐾</span>
-      <span class="brand-name">VetFactura</span>
+      <span class="brand-name" id="brandName">VetFactura</span>
       <span class="brand-tag">Factura C</span>
     </div>
     <nav class="topbar-nav">
@@ -177,6 +177,18 @@
 
           <div class="actions-col">
             <div class="field">
+              <label>Condición de Venta</label>
+              <div class="sel-wrap"><select id="condVenta" class="input">
+                <option value="Contado" selected>Contado</option>
+                <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                <option value="Cuenta Corriente">Cuenta Corriente</option>
+                <option value="Cheque">Cheque</option>
+                <option value="Otra">Otra</option>
+              </select></div>
+            </div>
+            <div class="field" style="margin-top:.5rem">
               <label>Observaciones <span class="opt">opcional</span></label>
               <textarea id="observaciones" class="input" rows="2" placeholder="Ej: Consulta + vacuna antirrábica para Max..."></textarea>
             </div>
@@ -263,8 +275,9 @@
 
         <div class="card">
           <div class="card-label">Datos del Emisor</div>
-          <div class="field"><label>Razón Social</label><input class="input" type="text" id="cfgRazon" /></div>
-          <div class="field" style="margin-top:.65rem"><label>CUIT</label><input class="input" type="text" id="cfgCuit" readonly /></div>
+          <div class="field"><label>Nombre del Sistema</label><input class="input" type="text" id="cfgNombreSistema" placeholder="VetFactura" /></div>
+          <div class="field" style="margin-top:.65rem"><label>Razón Social</label><input class="input" type="text" id="cfgRazon" /></div>
+          <div class="field" style="margin-top:.65rem"><label>CUIT</label><input class="input" type="text" id="cfgCuit" placeholder="20304567891" /></div>
           <div class="field" style="margin-top:.65rem"><label>Domicilio Fiscal</label><input class="input" type="text" id="cfgDom" /></div>
           <div class="field" style="margin-top:.65rem"><label>Domicilio Comercial</label><input class="input" type="text" id="cfgDomCom" placeholder="(si es distinto del fiscal)" /></div>
           <div class="field" style="margin-top:.65rem">
@@ -313,6 +326,35 @@
         </div>
 
         <div class="card">
+          <div class="card-label" style="display:flex;align-items:center;justify-content:space-between">
+            Estado de Servicios
+            <button class="btn btn--outline" type="button" onclick="checkStatus()" style="font-size:.7rem;padding:.2rem .6rem">Verificar</button>
+          </div>
+          <div class="cert-list" id="statusList">
+            <div class="cert-item">
+              <span>WSAA (Autenticación)</span>
+              <span class="pill pill--load" id="stWsaa">Sin verificar</span>
+            </div>
+            <div class="cert-item">
+              <span>WSFE (Facturación)</span>
+              <span class="pill pill--load" id="stWsfe">Sin verificar</span>
+            </div>
+            <div class="cert-item">
+              <span>Autenticación CUIT</span>
+              <span class="pill pill--load" id="stAuth">Sin verificar</span>
+            </div>
+            <div class="cert-item">
+              <span>Certificado X.509</span>
+              <span class="pill pill--load" id="stCert">Sin verificar</span>
+            </div>
+            <div class="cert-item">
+              <span>Clave privada .pem</span>
+              <span class="pill pill--load" id="stKey">Sin verificar</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
           <div class="card-label">Certificados ARCA</div>
           <div class="cert-list">
             <div class="cert-item">
@@ -344,6 +386,16 @@
           <div class="btn-col" style="margin-top:1rem">
             <button class="btn btn--outline" onclick="renovarToken()">🔄 Renovar Token WSAA</button>
             <button class="btn btn--outline">📎 Reemplazar certificado</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Base de Datos</div>
+          <p style="font-size:.85rem;color:#666;margin-bottom:1rem">Inicializar (borrar) datos para comenzar de cero. Esta acción no se puede deshacer.</p>
+          <div class="btn-col" style="gap:.6rem">
+            <button class="btn btn--outline" type="button" onclick="resetDB('facturas')" style="color:#c0392b;border-color:#c0392b">Borrar todas las facturas</button>
+            <button class="btn btn--outline" type="button" onclick="resetDB('clientes')" style="color:#c0392b;border-color:#c0392b">Borrar todos los clientes</button>
+            <button class="btn btn--outline" type="button" onclick="resetDB('all')" style="color:#c0392b;border-color:#c0392b">Borrar todo (facturas + clientes)</button>
           </div>
         </div>
 
@@ -417,7 +469,7 @@
     <div class="modal">
       <h3 id="ncTitle" style="margin-bottom:1.25rem">Nuevo Cliente</h3>
       <input type="hidden" id="ncId" value="" />
-      <div class="field"><label>Nombre</label><input class="input" id="ncNombre" placeholder="Juan Pérez" /></div>
+      <div class="field"><label>Nombre / Razón Social</label><input class="input" id="ncNombre" placeholder="Ej: Juan Pérez" /></div>
       <div class="row-2" style="margin-top:.65rem">
         <div class="field">
           <label>Tipo Doc.</label>
@@ -425,25 +477,26 @@
             <option value="96">DNI</option><option value="86">CUIL</option><option value="80">CUIT</option><option value="99">Sin identificar</option>
           </select></div>
         </div>
-        <div class="field"><label>Número</label><input class="input" id="ncNroDoc" placeholder="33456789" /></div>
+        <div class="field"><label>Nº Documento</label><input class="input" id="ncNroDoc" placeholder="33456789" /></div>
       </div>
       <div class="field" style="margin-top:.65rem">
-        <label>Condición frente al IVA</label>
+        <label>Cond. IVA</label>
         <div class="sel-wrap"><select class="input" id="ncCondIva">
           <option value="5" selected>Consumidor Final</option>
-          <option value="1">IVA Responsable Inscripto</option>
-          <option value="4">IVA Sujeto Exento</option>
-          <option value="6">Responsable Monotributo</option>
-          <option value="7">Sujeto No Categorizado</option>
-          <option value="8">Proveedor del Exterior</option>
-          <option value="9">Cliente del Exterior</option>
-          <option value="10">IVA Liberado – Ley 19.640</option>
-          <option value="13">Monotributista Social</option>
-          <option value="15">IVA No Alcanzado</option>
-          <option value="16">Monotributo Trab. Indep. Promovido</option>
+          <option value="1">Resp. Inscripto</option>
+          <option value="4">Exento</option>
+          <option value="6">Monotributo</option>
+          <option value="7">No Categorizado</option>
+          <option value="8">Prov. Exterior</option>
+          <option value="9">Cliente Exterior</option>
+          <option value="10">Liberado Ley 19.640</option>
+          <option value="13">Monotrib. Social</option>
+          <option value="15">No Alcanzado</option>
+          <option value="16">Monotrib. Promovido</option>
         </select></div>
       </div>
       <div class="field" style="margin-top:.65rem"><label>Email</label><input class="input" type="email" id="ncEmail" placeholder="opcional" /></div>
+      <div class="field" style="margin-top:.65rem"><label>Domicilio</label><input class="input" type="text" id="ncDomicilio" placeholder="opcional" /></div>
       <div class="modal-btns" style="margin-top:1.5rem">
         <button class="btn btn--outline" id="btnCancelCliente">Cancelar</button>
         <button class="btn btn--primary" id="btnGuardarCliente">Guardar</button>

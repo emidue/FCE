@@ -160,6 +160,8 @@ def init_db():
         cols = [r[1] for r in db.execute("PRAGMA table_info(clientes)").fetchall()]
         if "cond_iva" not in cols:
             db.execute("ALTER TABLE clientes ADD COLUMN cond_iva INTEGER NOT NULL DEFAULT 5")
+        if "domicilio" not in cols:
+            db.execute("ALTER TABLE clientes ADD COLUMN domicilio TEXT DEFAULT ''")
         # Migración: agregar columnas nuevas a facturas
         fcols = [r[1] for r in db.execute("PRAGMA table_info(facturas)").fetchall()]
         for col, ddl in [
@@ -389,11 +391,12 @@ class FacturaRequest(BaseModel):
     imp_total:       float
 
 class ClienteIn(BaseModel):
-    nombre:   str
-    tipo_doc: int = 96
-    nro_doc:  str = "0"
-    email:    Optional[str] = None
-    cond_iva: int = 5
+    nombre:    str
+    tipo_doc:  int = 96
+    nro_doc:   str = "0"
+    email:     Optional[str] = None
+    cond_iva:  int = 5
+    domicilio: Optional[str] = ""
 
 class EmisorIn(BaseModel):
     razon_social:       str
@@ -414,8 +417,9 @@ class SmtpIn(BaseModel):
     use_tls:    bool = True
 
 class ConfigIn(BaseModel):
-    emisor: EmisorIn
-    smtp:   SmtpIn
+    emisor:         EmisorIn
+    smtp:           SmtpIn
+    nombre_sistema: Optional[str] = "VetFactura"
 
 class EnviarEmailIn(BaseModel):
     to:      str
@@ -840,8 +844,8 @@ def listar_clientes():
 def crear_cliente(cliente: ClienteIn):
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO clientes (nombre,tipo_doc,nro_doc,email,cond_iva) VALUES (?,?,?,?,?)",
-            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva)
+            "INSERT INTO clientes (nombre,tipo_doc,nro_doc,email,cond_iva,domicilio) VALUES (?,?,?,?,?,?)",
+            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva, cliente.domicilio)
         )
     return {"id": cur.lastrowid, **cliente.dict()}
 
@@ -849,8 +853,8 @@ def crear_cliente(cliente: ClienteIn):
 def actualizar_cliente(id: int, cliente: ClienteIn):
     with get_db() as db:
         db.execute(
-            "UPDATE clientes SET nombre=?, tipo_doc=?, nro_doc=?, email=?, cond_iva=? WHERE id=?",
-            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva, id)
+            "UPDATE clientes SET nombre=?, tipo_doc=?, nro_doc=?, email=?, cond_iva=?, domicilio=? WHERE id=?",
+            (cliente.nombre, cliente.tipo_doc, cliente.nro_doc, cliente.email, cliente.cond_iva, cliente.domicilio, id)
         )
     return {"id": id, **cliente.dict()}
 
@@ -859,6 +863,59 @@ def eliminar_cliente(id: int):
     with get_db() as db:
         db.execute("DELETE FROM clientes WHERE id=?", (id,))
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────
+# INICIALIZAR BASE DE DATOS
+# ─────────────────────────────────────────────────────────
+@app.post("/admin/reset-db")
+def reset_database(tablas: str = "all"):
+    """Borra facturas y/o clientes. tablas: 'all', 'facturas', 'clientes'"""
+    with get_db() as db:
+        if tablas in ("all", "facturas"):
+            db.execute("DELETE FROM factura_items")
+            db.execute("DELETE FROM facturas")
+        if tablas in ("all", "clientes"):
+            db.execute("DELETE FROM clientes")
+    return {"ok": True, "tablas": tablas}
+
+
+# ─────────────────────────────────────────────────────────
+# ESTADO DE SERVICIOS
+# ─────────────────────────────────────────────────────────
+@app.get("/status")
+async def check_status():
+    results = {}
+    async with httpx.AsyncClient(timeout=10) as client:
+        # WSAA
+        try:
+            r = await client.get(WSAA_URL)
+            results["wsaa"] = {"ok": r.status_code < 500, "code": r.status_code}
+        except Exception as e:
+            results["wsaa"] = {"ok": False, "code": 0, "error": str(e)}
+
+        # WSFE
+        try:
+            r = await client.get(WSFE_URL)
+            results["wsfe"] = {"ok": r.status_code < 500, "code": r.status_code}
+        except Exception as e:
+            results["wsfe"] = {"ok": False, "code": 0, "error": str(e)}
+
+    # WSAA auth real (intenta obtener/reusar token)
+    try:
+        tok = await obtener_token("wsfe")
+        results["wsaa_auth"] = {"ok": True, "expira": tok.get("expira", "")}
+    except Exception as e:
+        detail = str(e.detail) if hasattr(e, 'detail') else str(e)
+        results["wsaa_auth"] = {"ok": False, "error": detail[:200]}
+
+    # Certificados
+    results["cert"] = CERT_PATH.exists()
+    results["key"] = KEY_PATH.exists()
+    results["ambiente"] = AMBIENTE
+    results["cuit"] = CUIT
+
+    return results
 
 
 # ─────────────────────────────────────────────────────────
@@ -878,6 +935,7 @@ def get_config():
 
 @app.post("/config")
 def set_config(new: ConfigIn):
+    global CUIT
     cfg = load_config()
     cfg["emisor"] = new.emisor.dict()
     new_smtp = new.smtp.dict()
@@ -885,7 +943,25 @@ def set_config(new: ConfigIn):
     if not new_smtp["password"] or new_smtp["password"] == "********":
         new_smtp["password"] = cfg.get("smtp", {}).get("password", "")
     cfg["smtp"] = new_smtp
+    cfg["nombre_sistema"] = new.nombre_sistema or "VetFactura"
     save_config(cfg)
+    # Actualizar CUIT en memoria si cambió
+    new_cuit = (new.emisor.cuit or "").strip()
+    if new_cuit and new_cuit != CUIT:
+        CUIT = new_cuit
+        # Persistir en .env
+        env_path = Path(__file__).parent / ".env"
+        if env_path.exists():
+            lines = env_path.read_text().splitlines()
+            updated = False
+            for i, line in enumerate(lines):
+                if line.startswith("ARCA_CUIT="):
+                    lines[i] = f"ARCA_CUIT={new_cuit}"
+                    updated = True
+                    break
+            if not updated:
+                lines.append(f"ARCA_CUIT={new_cuit}")
+            env_path.write_text("\n".join(lines) + "\n")
     return {"ok": True}
 
 @app.post("/config/logo")

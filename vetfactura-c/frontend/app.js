@@ -31,8 +31,13 @@ document.addEventListener('DOMContentLoaded', () => {
   verificarToken();
 });
 
+function localDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function setHoy() {
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = localDate();
   document.getElementById('fechaCbte').value = hoy;
   document.getElementById('fchServDesde').value = hoy;
   document.getElementById('fchServHasta').value = hoy;
@@ -257,6 +262,7 @@ function buildPayload() {
     receptor_nombre: document.getElementById('receptorNombre').value.trim(),
     receptor_email:  document.getElementById('receptorEmail').value.trim(),
     receptor_dom:    document.getElementById('receptorDom').value.trim(),
+    cond_venta:      document.getElementById('condVenta').value,
     observaciones:   document.getElementById('observaciones').value.trim(),
     items: state.items.filter(i => i.desc && i.price > 0).map(i => ({
       descripcion: i.desc,
@@ -337,7 +343,7 @@ async function cargarHistorial() {
       document.getElementById('totalHoy').textContent = fmt(0);
       return;
     }
-    const hoy = new Date().toISOString().split('T')[0].replace(/-/g,'');
+    const hoy = localDate().replace(/-/g,'');
     totalHoy = 0;
     data.forEach(r => {
       const tr = document.createElement('tr');
@@ -427,6 +433,7 @@ function usarCliente(id) {
   document.getElementById('nroDoc').value = fmtDoc(c.nro_doc, c.tipo_doc);
   document.getElementById('condIva').value = c.cond_iva || 5;
   if (c.email) document.getElementById('receptorEmail').value = c.email;
+  if (c.domicilio) document.getElementById('receptorDom').value = c.domicilio;
   if (c.email || c.domicilio) {
     document.getElementById('rowContacto').classList.add('open');
     document.getElementById('btnToggleContacto').classList.add('active');
@@ -444,7 +451,8 @@ function abrirModalCliente(id = null) {
   document.getElementById('ncTipoDoc').value = c ? c.tipo_doc : '96';
   document.getElementById('ncNroDoc').value  = c ? c.nro_doc : '';
   document.getElementById('ncCondIva').value = c ? (c.cond_iva || 5) : '5';
-  document.getElementById('ncEmail').value   = c ? (c.email || '') : '';
+  document.getElementById('ncEmail').value      = c ? (c.email || '') : '';
+  document.getElementById('ncDomicilio').value  = c ? (c.domicilio || '') : '';
   openOverlay('ovCliente');
 }
 
@@ -473,7 +481,8 @@ async function guardarCliente() {
   const email   = document.getElementById('ncEmail').value.trim();
   if (!nombre) { toast('El nombre es obligatorio.', 'warn'); return; }
 
-  const payload = { nombre, tipo_doc: tipoDoc, nro_doc: nroDoc, cond_iva: condIva, email };
+  const domicilio = document.getElementById('ncDomicilio').value.trim();
+  const payload = { nombre, tipo_doc: tipoDoc, nro_doc: nroDoc, cond_iva: condIva, email, domicilio };
 
   try {
     let res;
@@ -607,6 +616,10 @@ async function cargarConfig() {
     state.configCache = cfg;
     const e = cfg.emisor || {};
     const s = cfg.smtp || {};
+    const nombreSistema = cfg.nombre_sistema || 'VetFactura';
+    document.getElementById('cfgNombreSistema').value = nombreSistema;
+    document.getElementById('brandName').textContent  = nombreSistema;
+    document.title = `${nombreSistema} — Facturación Electrónica`;
     document.getElementById('cfgRazon').value        = e.razon_social || '';
     const cuitEl = document.getElementById('cfgCuit');
     if (cuitEl) cuitEl.value = cfg.cuit || '';
@@ -646,7 +659,9 @@ async function cargarConfig() {
 }
 
 async function guardarConfig() {
+  const nombreSistema = document.getElementById('cfgNombreSistema').value.trim() || 'VetFactura';
   const payload = {
+    nombre_sistema: nombreSistema,
     emisor: {
       razon_social:        document.getElementById('cfgRazon').value.trim(),
       domicilio:           document.getElementById('cfgDom').value.trim(),
@@ -662,7 +677,7 @@ async function guardarConfig() {
       user:       document.getElementById('cfgSmtpUser').value.trim(),
       password:   document.getElementById('cfgSmtpPass').value,
       from_email: document.getElementById('cfgSmtpFromEmail').value.trim(),
-      from_name:  document.getElementById('cfgSmtpFromName').value.trim() || 'VetFactura',
+      from_name:  document.getElementById('cfgSmtpFromName').value.trim() || nombreSistema,
       use_tls:    document.getElementById('cfgSmtpTls').value === 'true',
     },
   };
@@ -677,6 +692,67 @@ async function guardarConfig() {
     cargarConfig();
   } catch (e) {
     toast(`No se pudo guardar: ${e.message}`, 'error');
+  }
+}
+
+async function checkStatus() {
+  const ids = ['stWsaa', 'stWsfe', 'stAuth', 'stCert', 'stKey'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'pill pill--load';
+    el.textContent = 'Verificando...';
+  });
+  try {
+    const res = await fetch(`${API}/status`);
+    if (!res.ok) throw new Error('Error al consultar');
+    const st = await res.json();
+
+    const set = (id, ok, okText, errText) => {
+      const el = document.getElementById(id);
+      el.className = ok ? 'pill pill--ok' : 'pill pill--err';
+      el.textContent = ok ? okText : errText;
+    };
+
+    set('stWsaa', st.wsaa?.ok, 'Operativo', `Caído (${st.wsaa?.code || 'sin conexión'})`);
+    set('stWsfe', st.wsfe?.ok, 'Operativo', `Caído (${st.wsfe?.code || 'sin conexión'})`);
+
+    if (st.wsaa_auth?.ok) {
+      const exp = st.wsaa_auth.expira ? st.wsaa_auth.expira.replace('T', ' ').slice(0, 16) : '';
+      set('stAuth', true, `OK · expira ${exp}`, '');
+    } else {
+      const err = st.wsaa_auth?.error || 'Error';
+      const short = err.includes('Zero length') ? 'Error interno AFIP' :
+                    err.includes('timeout') ? 'Timeout' :
+                    err.length > 50 ? err.slice(0, 50) + '...' : err;
+      set('stAuth', false, '', short);
+    }
+
+    set('stCert', st.cert, 'Cargado', 'No encontrado');
+    set('stKey', st.key, 'Cargada', 'No encontrada');
+  } catch (e) {
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      el.className = 'pill pill--err';
+      el.textContent = 'Error de conexión';
+    });
+  }
+}
+
+async function resetDB(tablas) {
+  const msgs = {
+    facturas: 'todas las facturas',
+    clientes: 'todos los clientes',
+    all: 'todas las facturas y clientes',
+  };
+  if (!confirm(`¿Estás seguro de que querés borrar ${msgs[tablas]}?\n\nEsta acción no se puede deshacer.`)) return;
+  try {
+    const res = await fetch(`${API}/admin/reset-db?tablas=${tablas}`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Error');
+    toast(`Base de datos inicializada (${msgs[tablas]}).`);
+    cargarHistorial();
+    cargarClientes();
+  } catch (e) {
+    toast(`Error: ${e.message}`, 'error');
   }
 }
 
@@ -762,6 +838,7 @@ async function enviarFacturaPorEmail(id, emailSugerido) {
 function resetForm() {
   ['receptorNombre','nroDoc','receptorEmail','receptorDom','observaciones']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('condVenta').value = 'Contado';
   document.getElementById('itemsContainer').innerHTML = '';
   state.items = [];
   addItem();

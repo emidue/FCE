@@ -475,6 +475,8 @@ textarea.input { resize: vertical; min-height: 58px; }
 }
 .pill--ok   { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-brd); }
 .pill--warn { background: var(--warn-bg); color: var(--warn); }
+.pill--err  { background: #fdecea; color: #c0392b; border: 1px solid #e6b0aa; }
+.pill--load { background: #f0f0f0; color: #888; border: 1px solid #ddd; }
 
 .btn-sm {
   background: var(--surface2);
