@@ -6,7 +6,7 @@
 # ─────────────────────────────────────────────────────────
 
 from __future__ import annotations
-import os, time, sqlite3, base64, json, smtplib, ssl, mimetypes
+import os, time, sqlite3, base64, json, smtplib, ssl, mimetypes, asyncio
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -221,24 +221,45 @@ async def obtener_token(servicio: str = "wsfe") -> dict:
         if row:
             return {"token": row["token"], "sign": row["sign"]}
 
-    tra = _crear_tra(servicio)
-    cms = _firmar_tra(tra)
-
-    soap = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    # Reintentos con backoff: ARCA homologación a veces responde
+    # "Zero length BigInteger" de forma transitoria (incidente del servidor).
+    resp = None
+    last_error = None
+    for intento in range(3):
+        tra = _crear_tra(servicio)
+        cms = _firmar_tra(tra)
+        soap = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
   xmlns:wsaa="http://wsaa.view.sua.dvadac.desein.afip.gov.ar">
   <soapenv:Header/>
   <soapenv:Body>
     <wsaa:loginCms><wsaa:in0>{cms}</wsaa:in0></wsaa:loginCms>
   </soapenv:Body>
 </soapenv:Envelope>"""
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                WSAA_URL, content=soap.encode(),
+                headers={"Content-Type": "text/xml;charset=UTF-8", "SOAPAction": ""}
+            )
+        if resp.is_success:
+            break
+        last_error = resp.text[:1000]
+        if "Zero length BigInteger" not in last_error:
+            break
+        await asyncio.sleep(2 ** intento)  # 1s, 2s, 4s
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            WSAA_URL, content=soap.encode(),
-            headers={"Content-Type": "text/xml;charset=UTF-8", "SOAPAction": ""}
-        )
-        if not resp.is_success:
-            raise HTTPException(status_code=502, detail=f"WSAA {resp.status_code}: {resp.text[:1000]}")
+    if resp is None or not resp.is_success:
+        msg = last_error or ""
+        if "Zero length BigInteger" in msg:
+            detalle = (
+                "ARCA homologación está respondiendo con un error interno "
+                "('Zero length BigInteger'). No es un problema del certificado "
+                "ni del código: el servidor de AFIP/ARCA falla al procesar el "
+                "CMS. Reintentá en unos minutos; si persiste, verificá el estado "
+                "de homologación en los foros de DevAFIP."
+            )
+        else:
+            detalle = f"WSAA {resp.status_code if resp else 'sin respuesta'}: {msg}"
+        raise HTTPException(status_code=502, detail=detalle)
 
     root      = etree.fromstring(resp.content)
     inner_xml = root.find(".//{http://wsaa.view.sua.dvadac.desein.afip.gov.ar}loginCmsReturn").text
