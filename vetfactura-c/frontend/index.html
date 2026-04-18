@@ -222,10 +222,10 @@
         <table class="tabla" id="tablaHistorial">
           <thead>
             <tr>
-              <th>N° Comprobante</th>
-              <th>Fecha</th>
-              <th>Cliente</th>
-              <th>Total</th>
+              <th class="sortable" data-col="nro_cbte">N° Comprobante</th>
+              <th class="sortable" data-col="fecha_cbte">Fecha</th>
+              <th class="sortable" data-col="receptor_nombre">Cliente</th>
+              <th class="sortable" data-col="imp_total">Total</th>
               <th>CAE</th>
               <th>Vto. CAE</th>
               <th></th>
@@ -235,6 +235,7 @@
             <tr class="empty-row"><td colspan="7">No hay comprobantes emitidos aún.</td></tr>
           </tbody>
         </table>
+        <div class="paginador" id="paginadorHist"></div>
       </div>
     </section>
 
@@ -251,14 +252,23 @@
           <input type="text" class="input" placeholder="🔍  Buscar..." id="filtroClientes" style="max-width:300px" />
           <button class="btn btn--primary" id="btnNuevoCliente">+ Nuevo cliente</button>
         </div>
-        <table class="tabla">
+        <table class="tabla" id="tablaClientes">
           <thead>
-            <tr><th>Nombre</th><th>Tipo Doc.</th><th>Documento</th><th>Cond. IVA</th><th>Email</th><th>Facturas</th><th>Acciones</th></tr>
+            <tr>
+              <th class="sortable" data-col="nombre">Nombre</th>
+              <th class="sortable" data-col="tipo_doc">Tipo Doc.</th>
+              <th class="sortable" data-col="nro_doc">Documento</th>
+              <th class="sortable" data-col="cond_iva">Cond. IVA</th>
+              <th class="sortable" data-col="email">Email</th>
+              <th class="sortable" data-col="cant_facturas">Facturas</th>
+              <th>Acciones</th>
+            </tr>
           </thead>
           <tbody id="clientesBody">
             <tr class="empty-row"><td colspan="7">No hay clientes guardados.</td></tr>
           </tbody>
         </table>
+        <div class="paginador" id="paginadorClientes"></div>
       </div>
     </section>
 

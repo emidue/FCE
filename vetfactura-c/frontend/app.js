@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupButtons();
   setupConceptoToggle();
   setupContactoToggle();
+  setupSortableHeaders();
   cargarClientes();
   cargarHistorial();
   cargarConfig();
@@ -330,22 +331,154 @@ function actualizarTotalHoy(monto) {
   document.getElementById('totalHoy').textContent = fmt(totalHoy);
 }
 
+const PAGE_SIZE = 10;
+
+// ═══════════════════════════════════════════
+// Paginador y ordenamiento genéricos
+// ═══════════════════════════════════════════
+function renderPaginador(containerId, totalPages, currentPage, onPage) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  if (totalPages <= 1) return;
+
+  const prev = document.createElement('button');
+  prev.textContent = '‹';
+  prev.disabled = currentPage <= 1;
+  prev.onclick = () => onPage(currentPage - 1);
+  el.appendChild(prev);
+
+  // Show page numbers with ellipsis
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '...') {
+      pages.push('...');
+    }
+  }
+  pages.forEach(p => {
+    if (p === '...') {
+      const sp = document.createElement('span');
+      sp.className = 'pag-info';
+      sp.textContent = '...';
+      el.appendChild(sp);
+    } else {
+      const btn = document.createElement('button');
+      btn.textContent = p;
+      if (p === currentPage) btn.className = 'active';
+      btn.onclick = () => onPage(p);
+      el.appendChild(btn);
+    }
+  });
+
+  const next = document.createElement('button');
+  next.textContent = '›';
+  next.disabled = currentPage >= totalPages;
+  next.onclick = () => onPage(currentPage + 1);
+  el.appendChild(next);
+
+  const info = document.createElement('span');
+  info.className = 'pag-info';
+  info.textContent = `Pág. ${currentPage} de ${totalPages}`;
+  el.appendChild(info);
+}
+
+function updateSortHeaders(tableId, sortState) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  table.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('asc', 'desc');
+    if (th.dataset.col === sortState.col) th.classList.add(sortState.dir);
+  });
+}
+
+function setupSortableHeaders() {
+  // Historial
+  document.querySelectorAll('#tablaHistorial th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (state.histSort.col === col) {
+        state.histSort.dir = state.histSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.histSort = { col, dir: 'asc' };
+      }
+      state.histPage = 1;
+      renderHistorial();
+    });
+  });
+  // Clientes
+  document.querySelectorAll('#tablaClientes th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (state.cliSort.col === col) {
+        state.cliSort.dir = state.cliSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.cliSort = { col, dir: 'asc' };
+      }
+      state.cliPage = 1;
+      renderClientes();
+    });
+  });
+  // Filtro clientes
+  document.getElementById('filtroClientes').addEventListener('input', e => {
+    state.cliFilter = e.target.value;
+    state.cliPage = 1;
+    renderClientes();
+  });
+}
+
+state.histData = [];
+state.histPage = 1;
+state.histSort = { col: null, dir: 'desc' };
+state.histFilter = '';
+
 async function cargarHistorial() {
   try {
     const res = await fetch(`${API}/facturas`);
     if (!res.ok) return;
-    const data = await res.json();
-    const tbody = document.getElementById('historialBody');
-    tbody.innerHTML = '';
-    if (!data.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No hay comprobantes emitidos aún.</td></tr>';
-      totalHoy = 0;
-      document.getElementById('totalHoy').textContent = fmt(0);
-      return;
-    }
+    state.histData = await res.json();
+    // Calcular total hoy
     const hoy = localDate().replace(/-/g,'');
     totalHoy = 0;
-    data.forEach(r => {
+    state.histData.forEach(r => {
+      if (String(r.fecha_cbte).replace(/-/g,'') === hoy) totalHoy += Number(r.imp_total) || 0;
+    });
+    document.getElementById('totalHoy').textContent = fmt(totalHoy);
+    state.histPage = 1;
+    renderHistorial();
+  } catch (_) {}
+}
+
+function renderHistorial() {
+  let data = state.histData;
+  // Filtrar
+  if (state.histFilter) {
+    const q = state.histFilter.toLowerCase();
+    data = data.filter(r => `${fmtNro(r.punto_venta,r.nro_cbte)} ${r.receptor_nombre||''} ${r.cae||''}`.toLowerCase().includes(q));
+  }
+  // Ordenar
+  if (state.histSort.col) {
+    const col = state.histSort.col;
+    const dir = state.histSort.dir === 'asc' ? 1 : -1;
+    data = [...data].sort((a, b) => {
+      let va = a[col] ?? '', vb = b[col] ?? '';
+      if (typeof va === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'es', {numeric: true}) * dir;
+    });
+  }
+  // Paginar
+  const total = data.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.histPage > totalPages) state.histPage = totalPages;
+  const start = (state.histPage - 1) * PAGE_SIZE;
+  const page = data.slice(start, start + PAGE_SIZE);
+
+  const tbody = document.getElementById('historialBody');
+  tbody.innerHTML = '';
+  if (!total) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No hay comprobantes emitidos aún.</td></tr>';
+  } else {
+    page.forEach(r => {
       const tr = document.createElement('tr');
       const email = (r.receptor_email || '').replace(/"/g,'&quot;');
       tr.innerHTML = `
@@ -362,67 +495,86 @@ async function cargarHistorial() {
         </td>
       `;
       tbody.appendChild(tr);
-      if (String(r.fecha_cbte).replace(/-/g,'') === hoy) {
-        totalHoy += Number(r.imp_total) || 0;
-      }
     });
-    document.getElementById('totalHoy').textContent = fmt(totalHoy);
-  } catch (_) { /* backend no disponible */ }
+  }
+  renderPaginador('paginadorHist', totalPages, state.histPage, p => { state.histPage = p; renderHistorial(); });
+  updateSortHeaders('tablaHistorial', state.histSort);
 }
 
 function filtrarHistorial() {
-  const q = document.getElementById('filtroHist').value.toLowerCase();
-  document.querySelectorAll('#historialBody tr:not(.empty-row)').forEach(tr => {
-    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
+  state.histFilter = document.getElementById('filtroHist').value;
+  state.histPage = 1;
+  renderHistorial();
 }
 
 // ═══════════════════════════════════════════
 // Clientes
 // ═══════════════════════════════════════════
+state.cliPage = 1;
+state.cliSort = { col: 'nombre', dir: 'asc' };
+state.cliFilter = '';
+
 async function cargarClientes() {
   try {
     const res = await fetch(`${API}/clientes`);
     if (!res.ok) return;
     state.clientes = await res.json();
+    state.cliPage = 1;
     renderClientes();
   } catch (_) {}
 }
 
 function renderClientes() {
+  const ivaLabel = { 5:'Cons. Final', 1:'Resp. Inscripto', 4:'Exento', 6:'Monotributo', 7:'No Categorizado', 8:'Prov. Exterior', 9:'Cliente Exterior', 10:'Liberado', 13:'Monotrib. Social', 15:'No Alcanzado', 16:'Monotrib. Promovido' };
+  const tipoLabel = { 96:'DNI', 86:'CUIL', 80:'CUIT', 99:'Sin ident.' };
+  let data = state.clientes;
+  // Filtrar
+  if (state.cliFilter) {
+    const q = state.cliFilter.toLowerCase();
+    data = data.filter(c => `${c.nombre} ${c.nro_doc} ${c.email||''}`.toLowerCase().includes(q));
+  }
+  // Ordenar
+  if (state.cliSort.col) {
+    const col = state.cliSort.col;
+    const dir = state.cliSort.dir === 'asc' ? 1 : -1;
+    data = [...data].sort((a, b) => {
+      let va = a[col] ?? '', vb = b[col] ?? '';
+      if (typeof va === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'es', {numeric: true}) * dir;
+    });
+  }
+  // Paginar
+  const total = data.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.cliPage > totalPages) state.cliPage = totalPages;
+  const start = (state.cliPage - 1) * PAGE_SIZE;
+  const page = data.slice(start, start + PAGE_SIZE);
+
   const tbody = document.getElementById('clientesBody');
   tbody.innerHTML = '';
-  const clientes = state.clientes;
-  if (!clientes.length) {
+  if (!total) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No hay clientes guardados.</td></tr>';
-    return;
-  }
-  const ivaLabel = { 5:'Cons. Final', 1:'Resp. Inscripto', 4:'Exento', 6:'Monotributo', 7:'No Categorizado', 8:'Prov. Exterior', 9:'Cliente Exterior', 10:'Liberado', 13:'Monotrib. Social', 15:'No Alcanzado', 16:'Monotrib. Promovido' };
-  clientes.forEach(c => {
-    const tipoLabel = { 96:'DNI', 86:'CUIL', 80:'CUIT', 99:'Sin ident.' };
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${c.nombre}</td>
-      <td>${tipoLabel[c.tipo_doc] || '—'}</td>
-      <td>${fmtDoc(c.nro_doc, c.tipo_doc)}</td>
-      <td>${ivaLabel[c.cond_iva] || '—'}</td>
-      <td>${c.email || '—'}</td>
-      <td>${c.cant_facturas || 0}</td>
-      <td class="acciones-cell">
-        <button class="btn-sm" onclick="usarCliente(${c.id})" title="Facturar">Facturar</button>
-        <button class="btn-sm btn-sm--edit" onclick="editarCliente(${c.id})" title="Editar">✎</button>
-        <button class="btn-sm btn-sm--del" onclick="eliminarCliente(${c.id}, '${c.nombre.replace(/'/g, "\\'")}')" title="Eliminar">✕</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-
-  document.getElementById('filtroClientes').addEventListener('input', e => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll('#clientesBody tr:not(.empty-row)').forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  } else {
+    page.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${c.nombre}</td>
+        <td>${tipoLabel[c.tipo_doc] || '—'}</td>
+        <td>${fmtDoc(c.nro_doc, c.tipo_doc)}</td>
+        <td>${ivaLabel[c.cond_iva] || '—'}</td>
+        <td>${c.email || '—'}</td>
+        <td>${c.cant_facturas || 0}</td>
+        <td class="acciones-cell">
+          <button class="btn-sm" onclick="usarCliente(${c.id})" title="Facturar">Facturar</button>
+          <button class="btn-sm btn-sm--edit" onclick="editarCliente(${c.id})" title="Editar">✎</button>
+          <button class="btn-sm btn-sm--del" onclick="eliminarCliente(${c.id}, '${c.nombre.replace(/'/g, "\\'")}')" title="Eliminar">✕</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
     });
-  });
+  }
+  renderPaginador('paginadorClientes', totalPages, state.cliPage, p => { state.cliPage = p; renderClientes(); });
+  updateSortHeaders('tablaClientes', state.cliSort);
 }
 
 function usarCliente(id) {
