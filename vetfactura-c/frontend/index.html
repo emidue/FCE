@@ -48,7 +48,7 @@
           <div class="enc-row">
             <div class="field enc-pv">
               <label>P. Venta</label>
-              <input type="number" id="puntoVenta" value="1" min="1" max="9999" class="input" />
+              <input type="number" id="puntoVenta" value="1" min="1" max="9999" class="input" readonly title="El punto de venta se configura en la sección Configuración" />
             </div>
             <div class="field enc-fecha">
               <label>Fecha</label>
@@ -288,6 +288,7 @@
           <div class="field"><label>Nombre del Sistema</label><input class="input" type="text" id="cfgNombreSistema" placeholder="VetFactura" /></div>
           <div class="field" style="margin-top:.65rem"><label>Razón Social</label><input class="input" type="text" id="cfgRazon" /></div>
           <div class="field" style="margin-top:.65rem"><label>CUIT</label><input class="input" type="text" id="cfgCuit" placeholder="20304567891" /></div>
+          <div class="field" style="margin-top:.65rem"><label>Punto de Venta</label><input class="input" type="number" id="cfgPuntoVenta" min="1" max="99999" placeholder="1" /></div>
           <div class="field" style="margin-top:.65rem"><label>Domicilio Fiscal</label><input class="input" type="text" id="cfgDom" /></div>
           <div class="field" style="margin-top:.65rem"><label>Domicilio Comercial</label><input class="input" type="text" id="cfgDomCom" placeholder="(si es distinto del fiscal)" /></div>
           <div class="field" style="margin-top:.65rem">
@@ -368,15 +369,7 @@
           <div class="card-label">Certificados ARCA</div>
           <div class="cert-list">
             <div class="cert-item">
-              <span>Certificado X.509</span>
-              <span class="pill pill--ok">✓ Cargado</span>
-            </div>
-            <div class="cert-item">
-              <span>Clave privada .pem</span>
-              <span class="pill pill--ok">✓ Cargada</span>
-            </div>
-            <div class="cert-item">
-              <span>Ambiente</span>
+              <span>Ambiente activo</span>
               <div class="sel-wrap" style="width:180px">
                 <select class="input" id="cfgAmbiente">
                   <option value="homologacion">Homologación (test)</option>
@@ -390,12 +383,24 @@
             </div>
             <div class="cert-item">
               <span>Punto de Venta</span>
-              <span class="pill pill--ok">0001 · Web Services</span>
+              <span class="pill pill--ok" id="certPuntoVenta">—</span>
             </div>
           </div>
+
+          <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid #eee">
+            <div style="font-weight:600;font-size:.85rem;margin-bottom:.4rem">Homologación</div>
+            <div class="field"><label>Certificado X.509 <span id="cfgCertHomoStatus" style="font-size:.75rem;color:#888"></span></label><input class="input" type="text" id="cfgCertHomo" placeholder="./certs/homo_cert.pem" /></div>
+            <div class="field" style="margin-top:.5rem"><label>Clave privada .pem <span id="cfgKeyHomoStatus" style="font-size:.75rem;color:#888"></span></label><input class="input" type="text" id="cfgKeyHomo" placeholder="./certs/homo_key.pem" /></div>
+          </div>
+
+          <div style="margin-top:.8rem;padding-top:.8rem;border-top:1px solid #eee">
+            <div style="font-weight:600;font-size:.85rem;margin-bottom:.4rem">Producción</div>
+            <div class="field"><label>Certificado X.509 <span id="cfgCertProdStatus" style="font-size:.75rem;color:#888"></span></label><input class="input" type="text" id="cfgCertProd" placeholder="./certs/cert.pem" /></div>
+            <div class="field" style="margin-top:.5rem"><label>Clave privada .pem <span id="cfgKeyProdStatus" style="font-size:.75rem;color:#888"></span></label><input class="input" type="text" id="cfgKeyProd" placeholder="./certs/key.pem" /></div>
+          </div>
+
           <div class="btn-col" style="margin-top:1rem">
             <button class="btn btn--outline" onclick="renovarToken()">🔄 Renovar Token WSAA</button>
-            <button class="btn btn--outline">📎 Reemplazar certificado</button>
           </div>
         </div>
 

@@ -251,7 +251,6 @@ async function emitir() {
 
 function buildPayload() {
   return {
-    punto_venta:     parseInt(document.getElementById('puntoVenta').value),
     fecha_cbte:      document.getElementById('fechaCbte').value.replace(/-/g,''),  // YYYYMMDD
     concepto:        parseInt(document.getElementById('concepto').value),
     tipo_doc:        parseInt(document.getElementById('tipoDoc').value),
@@ -729,10 +728,12 @@ async function verificarToken() {
     if (data.expira) {
       document.getElementById('tokenVto').textContent = fmtFecha(data.expira) + ' ' + (data.hora || '');
     }
-    const dot = document.querySelector('.dot--ok');
+    // Badge del ambiente (soporta ambos casos al cambiar en caliente)
     const statusText = document.querySelector('.status-text');
-    if (data.ambiente === 'produccion') {
-      statusText.textContent = 'ARCA · Producción';
+    if (statusText && data.ambiente) {
+      statusText.textContent = data.ambiente === 'produccion'
+        ? 'ARCA · Producción'
+        : 'ARCA · Homologación';
     }
   } catch (_) { /* backend no disponible */ }
 }
@@ -775,6 +776,46 @@ async function cargarConfig() {
     document.getElementById('cfgRazon').value        = e.razon_social || '';
     const cuitEl = document.getElementById('cfgCuit');
     if (cuitEl) cuitEl.value = cfg.cuit || '';
+    const pvEl = document.getElementById('cfgPuntoVenta');
+    if (pvEl) pvEl.value = cfg.punto_venta || 1;
+    // El punto de venta del formulario de emisión refleja siempre el configurado
+    const pvFactura = document.getElementById('puntoVenta');
+    if (pvFactura) pvFactura.value = cfg.punto_venta || 1;
+    // Badge en la tarjeta de Certificados ARCA
+    const pvBadge = document.getElementById('certPuntoVenta');
+    if (pvBadge) pvBadge.textContent = String(cfg.punto_venta || 1).padStart(4, '0') + ' · Web Services';
+    // Ambiente (select en Certificados ARCA + badge del header)
+    const ambSel = document.getElementById('cfgAmbiente');
+    if (ambSel) ambSel.value = cfg.ambiente || 'homologacion';
+    const statusText = document.querySelector('.status-text');
+    if (statusText) {
+      statusText.textContent = cfg.ambiente === 'produccion'
+        ? 'ARCA · Producción'
+        : 'ARCA · Homologación';
+    }
+    // Rutas de certs por ambiente + status de existencia
+    const certs  = cfg.certs  || {};
+    const status = cfg.certs_status || {};
+    const setPath = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    const setStat = (id, exists, empty) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (empty) { el.textContent = ''; return; }
+      el.textContent = exists ? '· ✓ encontrado' : '· ✗ no encontrado';
+      el.style.color = exists ? '#2e7d32' : '#c0392b';
+    };
+    const h = certs.homologacion || {};
+    const p = certs.produccion   || {};
+    const hs = status.homologacion || {};
+    const ps = status.produccion   || {};
+    setPath('cfgCertHomo', h.cert_path);
+    setPath('cfgKeyHomo',  h.key_path);
+    setPath('cfgCertProd', p.cert_path);
+    setPath('cfgKeyProd',  p.key_path);
+    setStat('cfgCertHomoStatus', hs.cert_exists, !h.cert_path);
+    setStat('cfgKeyHomoStatus',  hs.key_exists,  !h.key_path);
+    setStat('cfgCertProdStatus', ps.cert_exists, !p.cert_path);
+    setStat('cfgKeyProdStatus',  ps.key_exists,  !p.key_path);
     document.getElementById('cfgDom').value          = e.domicilio || '';
     const domCom = document.getElementById('cfgDomCom');
     if (domCom) domCom.value = e.domicilio_comercial || '';
@@ -812,8 +853,17 @@ async function cargarConfig() {
 
 async function guardarConfig() {
   const nombreSistema = document.getElementById('cfgNombreSistema').value.trim() || 'VetFactura';
+  const pvRaw = parseInt(document.getElementById('cfgPuntoVenta')?.value, 10);
+  const ambiente = document.getElementById('cfgAmbiente')?.value || null;
+  const val = id => (document.getElementById(id)?.value || '').trim();
   const payload = {
     nombre_sistema: nombreSistema,
+    punto_venta: Number.isFinite(pvRaw) && pvRaw > 0 ? pvRaw : null,
+    ambiente,
+    certs: {
+      homologacion: { cert_path: val('cfgCertHomo'), key_path: val('cfgKeyHomo') },
+      produccion:   { cert_path: val('cfgCertProd'), key_path: val('cfgKeyProd') },
+    },
     emisor: {
       razon_social:        document.getElementById('cfgRazon').value.trim(),
       domicilio:           document.getElementById('cfgDom').value.trim(),

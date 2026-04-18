@@ -7,6 +7,13 @@
 
 from __future__ import annotations
 import os, time, sqlite3, base64, json, smtplib, ssl, mimetypes, asyncio
+
+# SSL context laxo para AFIP: sus servidores (especialmente producción,
+# servicios1.afip.gov.ar) usan Diffie-Hellman < 2048 bits, que OpenSSL 3
+# rechaza por default ("dh key too small"). Bajamos el SECLEVEL a 1 sólo
+# para estas conexiones salientes.
+_AFIP_SSL_CTX = ssl.create_default_context()
+_AFIP_SSL_CTX.set_ciphers("DEFAULT:@SECLEVEL=1")
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -30,21 +37,24 @@ from cryptography import x509 as cx509
 load_dotenv()
 
 CUIT        = os.getenv("ARCA_CUIT", "20304567891")
-CERT_PATH   = Path(os.getenv("ARCA_CERT_PATH", "./certs/cert.pem"))
-KEY_PATH    = Path(os.getenv("ARCA_KEY_PATH",  "./certs/key.pem"))
 AMBIENTE    = os.getenv("ARCA_AMBIENTE", "homologacion")
 PUNTO_VENTA = int(os.getenv("ARCA_PUNTO_VENTA", "1"))
 DB_PATH     = os.getenv("DB_PATH", "./vetfactura.db")
 
-WSAA_URL = {
+# Rutas de certs por ambiente (configurable desde UI, ver DEFAULT_CONFIG)
+CERT_PATH: Path = Path("./certs/homo_cert.pem")
+KEY_PATH:  Path = Path("./certs/homo_key.pem")
+
+WSAA_URLS = {
     "homologacion": "https://wsaahomo.afip.gov.ar/ws/services/LoginCms",
     "produccion":   "https://wsaa.afip.gov.ar/ws/services/LoginCms",
-}[AMBIENTE]
-
-WSFE_URL = {
+}
+WSFE_URLS = {
     "homologacion": "https://wswhomo.afip.gov.ar/wsfev1/service.asmx",
     "produccion":   "https://servicios1.afip.gov.ar/wsfev1/service.asmx",
-}[AMBIENTE]
+}
+WSAA_URL = WSAA_URLS[AMBIENTE]
+WSFE_URL = WSFE_URLS[AMBIENTE]
 
 TIPO_CBTE_C = 11  # Factura C
 
@@ -69,6 +79,10 @@ DEFAULT_CONFIG = {
         "from_name": "VetFactura",
         "use_tls": True,
     },
+    "certs": {
+        "homologacion": {"cert_path": "./certs/homo_cert.pem", "key_path": "./certs/homo_key.pem"},
+        "produccion":   {"cert_path": "./certs/cert.pem",      "key_path": "./certs/key.pem"},
+    },
 }
 
 def load_config() -> dict:
@@ -89,6 +103,37 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _aplicar_certs_del_ambiente(cfg: dict | None = None) -> None:
+    """Recalcula CERT_PATH/KEY_PATH según AMBIENTE y la config persistida."""
+    global CERT_PATH, KEY_PATH
+    cfg = cfg or load_config()
+    certs = (cfg.get("certs") or {}).get(AMBIENTE) or {}
+    defaults = DEFAULT_CONFIG["certs"][AMBIENTE]
+    CERT_PATH = Path(certs.get("cert_path") or defaults["cert_path"])
+    KEY_PATH  = Path(certs.get("key_path")  or defaults["key_path"])
+
+
+def _migrar_certs_desde_env() -> None:
+    """Si config.json no tiene 'certs' y el .env define rutas, migrarlas al ambiente actual."""
+    legacy_cert = os.getenv("ARCA_CERT_PATH")
+    legacy_key  = os.getenv("ARCA_KEY_PATH")
+    if not (legacy_cert or legacy_key):
+        return
+    cfg = load_config()
+    if cfg.get("certs"):
+        return  # ya migrado
+    cfg["certs"] = json.loads(json.dumps(DEFAULT_CONFIG["certs"]))
+    if legacy_cert:
+        cfg["certs"][AMBIENTE]["cert_path"] = legacy_cert
+    if legacy_key:
+        cfg["certs"][AMBIENTE]["key_path"]  = legacy_key
+    save_config(cfg)
+
+
+_migrar_certs_desde_env()
+_aplicar_certs_del_ambiente()
 
 # ─── FastAPI app ─────────────────────────────────────────
 app = FastAPI(title="VetFactura C", version="1.0.0")
@@ -235,7 +280,7 @@ async def obtener_token(servicio: str = "wsfe") -> dict:
     <wsaa:loginCms><wsaa:in0>{cms}</wsaa:in0></wsaa:loginCms>
   </soapenv:Body>
 </soapenv:Envelope>"""
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, verify=_AFIP_SSL_CTX) as client:
             resp = await client.post(
                 WSAA_URL, content=soap.encode(),
                 headers={"Content-Type": "text/xml;charset=UTF-8", "SOAPAction": ""}
@@ -294,7 +339,7 @@ async def _wsfe_call(action: str, body_inner: str) -> etree._Element:
   <soapenv:Header/>
   <soapenv:Body><ar:{action}>{body_inner}</ar:{action}></soapenv:Body>
 </soapenv:Envelope>"""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, verify=_AFIP_SSL_CTX) as client:
         resp = await client.post(
             WSFE_URL, content=soap.encode(),
             headers={
@@ -394,7 +439,6 @@ class ItemFactura(BaseModel):
     precio_unit: float
 
 class FacturaRequest(BaseModel):
-    punto_venta:     int = 1
     fecha_cbte:      str
     concepto:        int = 2
     tipo_doc:        int = 96
@@ -437,10 +481,21 @@ class SmtpIn(BaseModel):
     from_name:  Optional[str] = "VetFactura"
     use_tls:    bool = True
 
+class CertPathsIn(BaseModel):
+    cert_path: Optional[str] = None
+    key_path:  Optional[str] = None
+
+class CertsByEnvIn(BaseModel):
+    homologacion: Optional[CertPathsIn] = None
+    produccion:   Optional[CertPathsIn] = None
+
 class ConfigIn(BaseModel):
     emisor:         EmisorIn
     smtp:           SmtpIn
     nombre_sistema: Optional[str] = "VetFactura"
+    punto_venta:    Optional[int] = None
+    ambiente:       Optional[str] = None  # "homologacion" | "produccion"
+    certs:          Optional[CertsByEnvIn] = None
 
 class EnviarEmailIn(BaseModel):
     to:      str
@@ -907,7 +962,7 @@ def reset_database(tablas: str = "all"):
 @app.get("/status")
 async def check_status():
     results = {}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, verify=_AFIP_SSL_CTX) as client:
         # WSAA
         try:
             r = await client.get(WSAA_URL)
@@ -949,14 +1004,40 @@ def get_config():
     cfg_safe = json.loads(json.dumps(cfg))
     if cfg_safe.get("smtp", {}).get("password"):
         cfg_safe["smtp"]["password"] = "********"
-    cfg_safe["has_logo"] = LOGO_PATH.exists()
-    cfg_safe["cuit"]     = CUIT
-    cfg_safe["ambiente"] = AMBIENTE
+    cfg_safe["has_logo"]    = LOGO_PATH.exists()
+    cfg_safe["cuit"]        = CUIT
+    cfg_safe["ambiente"]    = AMBIENTE
+    cfg_safe["punto_venta"] = PUNTO_VENTA
+    # Indicador de existencia por cada ruta configurada
+    cert_status = {}
+    for amb, paths in cfg_safe.get("certs", {}).items():
+        cert_status[amb] = {
+            "cert_exists": Path(paths.get("cert_path", "")).exists(),
+            "key_exists":  Path(paths.get("key_path",  "")).exists(),
+        }
+    cfg_safe["certs_status"] = cert_status
     return cfg_safe
+
+def _actualizar_env(pares: dict) -> None:
+    """Reescribe el .env preservando líneas y actualizando/insertando las claves dadas."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    lines = env_path.read_text().splitlines()
+    pendientes = dict(pares)
+    for i, line in enumerate(lines):
+        for clave in list(pendientes):
+            if line.startswith(f"{clave}="):
+                lines[i] = f"{clave}={pendientes.pop(clave)}"
+                break
+    for clave, valor in pendientes.items():
+        lines.append(f"{clave}={valor}")
+    env_path.write_text("\n".join(lines) + "\n")
+
 
 @app.post("/config")
 def set_config(new: ConfigIn):
-    global CUIT
+    global CUIT, PUNTO_VENTA, AMBIENTE, WSAA_URL, WSFE_URL
     cfg = load_config()
     cfg["emisor"] = new.emisor.dict()
     new_smtp = new.smtp.dict()
@@ -965,24 +1046,48 @@ def set_config(new: ConfigIn):
         new_smtp["password"] = cfg.get("smtp", {}).get("password", "")
     cfg["smtp"] = new_smtp
     cfg["nombre_sistema"] = new.nombre_sistema or "VetFactura"
+
+    # Rutas de certs por ambiente (si vinieron, mergear por campo para no perder claves)
+    if new.certs:
+        cert_cfg = cfg.setdefault("certs", json.loads(json.dumps(DEFAULT_CONFIG["certs"])))
+        for amb in ("homologacion", "produccion"):
+            entry = getattr(new.certs, amb, None)
+            if not entry:
+                continue
+            cert_cfg.setdefault(amb, {})
+            if entry.cert_path is not None and entry.cert_path.strip():
+                cert_cfg[amb]["cert_path"] = entry.cert_path.strip()
+            if entry.key_path is not None and entry.key_path.strip():
+                cert_cfg[amb]["key_path"]  = entry.key_path.strip()
+
     save_config(cfg)
+
+    env_updates = {}
     # Actualizar CUIT en memoria si cambió
     new_cuit = (new.emisor.cuit or "").strip()
     if new_cuit and new_cuit != CUIT:
         CUIT = new_cuit
-        # Persistir en .env
-        env_path = Path(__file__).parent / ".env"
-        if env_path.exists():
-            lines = env_path.read_text().splitlines()
-            updated = False
-            for i, line in enumerate(lines):
-                if line.startswith("ARCA_CUIT="):
-                    lines[i] = f"ARCA_CUIT={new_cuit}"
-                    updated = True
-                    break
-            if not updated:
-                lines.append(f"ARCA_CUIT={new_cuit}")
-            env_path.write_text("\n".join(lines) + "\n")
+        env_updates["ARCA_CUIT"] = new_cuit
+    # Actualizar PUNTO_VENTA en memoria si cambió
+    if new.punto_venta is not None and new.punto_venta > 0 and new.punto_venta != PUNTO_VENTA:
+        PUNTO_VENTA = int(new.punto_venta)
+        env_updates["ARCA_PUNTO_VENTA"] = str(PUNTO_VENTA)
+    # Actualizar AMBIENTE (y URLs) en memoria si cambió
+    new_amb = (new.ambiente or "").strip().lower()
+    if new_amb in WSAA_URLS and new_amb != AMBIENTE:
+        AMBIENTE  = new_amb
+        WSAA_URL  = WSAA_URLS[new_amb]
+        WSFE_URL  = WSFE_URLS[new_amb]
+        env_updates["ARCA_AMBIENTE"] = new_amb
+        # Los tokens WSAA son específicos del ambiente: invalidarlos
+        with get_db() as db:
+            db.execute("DELETE FROM tokens_wsaa")
+
+    # Recalcular siempre las rutas activas (ambiente o certs pudieron cambiar)
+    _aplicar_certs_del_ambiente(cfg)
+
+    if env_updates:
+        _actualizar_env(env_updates)
     return {"ok": True}
 
 @app.post("/config/logo")
