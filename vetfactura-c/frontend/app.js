@@ -1107,6 +1107,7 @@ async function confirmarEnvioEmail() {
 function resetForm() {
   ['receptorNombre','nroDoc','receptorEmail','receptorDom','observaciones']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('tipoDoc').value = '99';
   document.getElementById('condVenta').value = 'Contado';
   document.getElementById('itemsContainer').innerHTML = '';
   state.items = [];

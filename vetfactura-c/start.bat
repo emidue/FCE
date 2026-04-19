@@ -31,13 +31,13 @@ if not exist "%BACKEND_DIR%\.env" (
     )
 )
 
-:: Iniciar backend
+:: Iniciar backend (oculto)
 echo [*] Iniciando backend  (puerto %BACKEND_PORT%)...
-start "VetFactura - Backend" /min cmd /c "cd /d "%BACKEND_DIR%" && "%VENV_DIR%\Scripts\python.exe" -m uvicorn main:app --host 0.0.0.0 --port %BACKEND_PORT%"
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Start-Process -FilePath '%VENV_DIR%\Scripts\python.exe' -ArgumentList '-m','uvicorn','main:app','--host','0.0.0.0','--port','%BACKEND_PORT%' -WorkingDirectory '%BACKEND_DIR%' -WindowStyle Hidden -PassThru).Id"') do set BACKEND_PID=%%i
 
-:: Iniciar frontend
+:: Iniciar frontend (oculto)
 echo [*] Iniciando frontend (puerto %FRONTEND_PORT%)...
-start "VetFactura - Frontend" /min cmd /c "cd /d "%FRONTEND_DIR%" && "%VENV_DIR%\Scripts\python.exe" -m http.server %FRONTEND_PORT% --bind 0.0.0.0"
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Start-Process -FilePath '%VENV_DIR%\Scripts\python.exe' -ArgumentList '-m','http.server','%FRONTEND_PORT%','--bind','0.0.0.0' -WorkingDirectory '%FRONTEND_DIR%' -WindowStyle Hidden -PassThru).Id"') do set FRONTEND_PID=%%i
 
 :: Esperar que el backend levante
 timeout /t 3 /nobreak >nul
@@ -65,7 +65,7 @@ pause >nul
 
 :: Cerrar procesos
 echo [*] Deteniendo servicios...
-taskkill /fi "WINDOWTITLE eq VetFactura - Backend*" /f >nul 2>&1
-taskkill /fi "WINDOWTITLE eq VetFactura - Frontend*" /f >nul 2>&1
+if defined BACKEND_PID  taskkill /pid %BACKEND_PID%  /t /f >nul 2>&1
+if defined FRONTEND_PID taskkill /pid %FRONTEND_PID% /t /f >nul 2>&1
 echo [OK] Servicios detenidos.
 timeout /t 2 /nobreak >nul
